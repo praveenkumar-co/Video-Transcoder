@@ -40,7 +40,7 @@ export interface S3EventRecord {
 }
 
 export interface S3EventNotification {
-    record : S3EventRecord[]; 
+    Records : S3EventRecord[]; 
 }
 export interface TranscodeJob {
   videoId: string;

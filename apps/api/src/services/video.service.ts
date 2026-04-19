@@ -2,7 +2,7 @@
 // CreationOfVideo -> updationOfVideo -> getVideo -> returnVideoDetails
 
 import { VideoModel, VideoDocument } from '../models/video.model';
-import { VideoStatus ,VideoMetaData} from '../types/index';
+import { VideoStatus, VideoMetaData } from '../types/index';
 
 export async function createVideoRecord(params: {
   videoId: string;
@@ -13,7 +13,7 @@ export async function createVideoRecord(params: {
   sizeBytes: number;
 }): Promise<VideoDocument> {
   const video = new VideoModel({
-     videoId: params.videoId,
+    _id: params.videoId,
     s3Key: params.s3Key,
     bucket: params.bucket,
     originalName: params.originalName,
@@ -34,14 +34,13 @@ export async function updateVideoStatus(
     { new: true }
   );
 }
-
 export async function getVideoById(videoId: string): Promise<VideoDocument | null> {
   return VideoModel.findById(videoId);
 }
 
 export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
   return {
-    videoId: doc._id.toString() ,
+    videoId: doc._id.toString(),
     s3Key: doc.s3Key,
     bucket: doc.bucket,
     originalName: doc.originalName,

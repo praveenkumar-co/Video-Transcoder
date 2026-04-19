@@ -17,6 +17,7 @@ export const requestPresignedUrl = asyncHandler(
       mimeType,
       sizeBytes,
     });
+    console.log("STEP 1: before DB insert");
     await createVideoRecord({
       videoId: presigned.videoId,
       s3Key: presigned.s3Key,
@@ -25,6 +26,7 @@ export const requestPresignedUrl = asyncHandler(
       mimeType,
       sizeBytes,
     });
+    console.log("STEP 1: after DB insert");
     return res.status(201).json(
       new ApiResponse(201, presigned, 'Upload URL generated')
     );

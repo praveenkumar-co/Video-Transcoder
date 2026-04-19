@@ -9,7 +9,8 @@ import { globalErrorHandler } from './middleware/error.middleware';
 const app = express();
 
 app.use(cors({ origin: env.NODE_ENV === 'development' ? '*' : process.env.ALLOWED_ORIGINS }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json());
+app.use(express.text({ type: "*/*" }));
 
 app.get('/health', (_req, res) => {
   res.json({
@@ -37,6 +38,6 @@ async function bootstrap(): Promise<void> {
   });
 }
 bootstrap().catch((err) => {
-  console.error('Bootstrap failed:', err);
+  console.error('Bootstrap failed:', err);  
   process.exit(1);
 });

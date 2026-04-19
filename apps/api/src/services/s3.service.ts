@@ -7,7 +7,6 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
-import { ApiError } from "node-utils-kit";
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { env } from "../env";
@@ -63,7 +62,6 @@ export async function generatePresignedUploadUrl(
 }
 // this run when webhook gets events from SNS then verifyObjectExists exist 
 // there to check that uploaded to that AWS S3 actually existed or not in that system
-
 export async function verifyObjectExists(
   bucket: string,
   key: string
@@ -71,7 +69,7 @@ export async function verifyObjectExists(
   try {
     await s3Client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return true;
-  } catch (error) {
-    throw new ApiError(404, "File not found in S3");
+  } catch {
+    return false; // throw mat karo — false return karo
   }
 }
