@@ -1,15 +1,21 @@
 import mongoose, { Schema } from 'mongoose';
 import { VideoStatus, VideoMetaData } from '../types/index';
 
-export interface VideoDocument extends Omit<VideoMetaData, "videoId"> {
+export interface VideoDocument extends VideoMetaData {
   _id: string;
 }
 
 const VideoSchema = new Schema<VideoDocument>(
   {
     _id: {
-    type: String, 
-  },
+      type: String, 
+    },
+    videoId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
     s3Key:
     {
       type: String,

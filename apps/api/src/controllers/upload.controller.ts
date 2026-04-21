@@ -20,7 +20,7 @@ export const requestPresignedUrl = asyncHandler(
     console.log("STEP 1: before DB insert");
     await createVideoRecord({
       videoId: presigned.videoId,
-      s3Key: presigned.s3Key,
+      s3Key: presigned.s3Key, 
       bucket: env.S3_RAW_BUCKET,
       originalName: fileName,
       mimeType,

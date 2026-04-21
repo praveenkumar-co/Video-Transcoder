@@ -14,6 +14,7 @@ export async function createVideoRecord(params: {
 }): Promise<VideoDocument> {
   const video = new VideoModel({
     _id: params.videoId,
+    videoId: params.videoId,
     s3Key: params.s3Key,
     bucket: params.bucket,
     originalName: params.originalName,
@@ -40,7 +41,7 @@ export async function getVideoById(videoId: string): Promise<VideoDocument | nul
 
 export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
   return {
-    videoId: doc._id.toString(),
+    videoId: doc.videoId,
     s3Key: doc.s3Key,
     bucket: doc.bucket,
     originalName: doc.originalName,

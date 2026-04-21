@@ -70,6 +70,6 @@ export async function verifyObjectExists(
     await s3Client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return true;
   } catch {
-    return false; // throw mat karo — false return karo
+    return false;
   }
 }
