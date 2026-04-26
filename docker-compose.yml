@@ -7,6 +7,43 @@ services:
     ports:
       - '6379:6379'
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+        reservations:
+          memory: 64m
 
-volumes:
-  mongo-data:
+  api:
+    build:
+      context: ./apps/api
+    container_name: vp-api
+    ports:
+      - '4000:4000'
+    env_file:
+      - ./apps/api/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
+
+  worker:
+    build:
+      context: ./apps/transcoder
+    container_name: vp-worker
+    env_file:
+      - ./apps/transcoder/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+        reservations:
+          memory: 512m

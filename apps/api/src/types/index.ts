@@ -15,6 +15,7 @@ export interface VideoMetaData{
     sizeBytes : number ;
 
     status : VideoStatus ;
+    masterPlaylistUrl?: string;   
     uploadedAt: Date;
     updatedAt: Date; 
 }

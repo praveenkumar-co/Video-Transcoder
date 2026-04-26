@@ -1,0 +1,31 @@
+# ⚠️  DO NOT APPLY THIS FILE WHEN KEDA IS INSTALLED.
+#
+# KEDA (keda.sh/v1alpha1 ScaledObject) creates and manages its own internal
+# HorizontalPodAutoscaler automatically. Applying a separate HPA for the same
+# Deployment causes a conflict: KEDA's ScaledObject goes into READY=False state
+# and scaling stops working entirely.
+#
+# Scaling for transcoder-worker is managed by:
+#   ./scaledobject.yaml  (min=1, max=1 — safe for MacBook Air)
+#
+# If KEDA is ever removed, you can un-comment and apply this file instead.
+#
+# ---
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: transcoder-worker-hpa
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: transcoder-worker
+#   minReplicas: 1
+#   maxReplicas: 1
+#   metrics:
+#     - type: Resource
+#       resource:
+#         name: cpu
+#         target:
+#           type: Utilization
+#           averageUtilization: 70

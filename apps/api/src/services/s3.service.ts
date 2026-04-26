@@ -11,7 +11,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { env } from "../env";
 
-const s3Client = new S3Client({
+const s3Client = new S3Client({ 
   region: env.AWS_REGION,
   credentials: {
     accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -60,8 +60,6 @@ export async function generatePresignedUploadUrl(
     expiresIn: env.PRESIGNED_URL_EXPIRY,
   };
 }
-// this run when webhook gets events from SNS then verifyObjectExists exist 
-// there to check that uploaded to that AWS S3 actually existed or not in that system
 export async function verifyObjectExists(
   bucket: string,
   key: string

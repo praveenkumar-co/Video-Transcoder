@@ -27,14 +27,20 @@ export async function createVideoRecord(params: {
 
 export async function updateVideoStatus(
   videoId: string,
-  status: VideoStatus
+  status: VideoStatus,
+  masterPlaylistUrl?: string     
 ): Promise<VideoDocument | null> {
+  const update: Record<string, unknown> = { status, updatedAt: new Date() };
+  if (masterPlaylistUrl) {
+    update.masterPlaylistUrl = masterPlaylistUrl;
+  }
   return VideoModel.findByIdAndUpdate(
     videoId,
-    { status, updatedAt: new Date() },
-    { new: true }
+    update,
+    { returnDocument: 'after' }
   );
 }
+
 export async function getVideoById(videoId: string): Promise<VideoDocument | null> {
   return VideoModel.findById(videoId);
 }
@@ -48,6 +54,7 @@ export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
     mimeType: doc.mimeType,
     sizeBytes: doc.sizeBytes,
     status: doc.status,
+    masterPlaylistUrl: doc.masterPlaylistUrl,   
     uploadedAt: doc.uploadedAt,
     updatedAt: doc.updatedAt,
   };

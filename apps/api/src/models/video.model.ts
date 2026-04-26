@@ -47,6 +47,9 @@ const VideoSchema = new Schema<VideoDocument>(
       required: true,
       index: true,
     },
+    masterPlaylistUrl: {
+    type: String,   
+  },
     uploadedAt: {
       type: Date,
       default: Date.now

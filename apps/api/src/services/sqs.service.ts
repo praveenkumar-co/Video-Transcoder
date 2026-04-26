@@ -28,13 +28,14 @@ async function processMessage(body: string, receiptHandle: string): Promise<void
         console.warn(`Unrecognised S3 key: ${s3Key}`);
         continue;
       }
+      
       const videoId = match[1];
       await videoQueue.add(
         'transcode',
         { videoId, s3Key, bucket },
         { jobId: videoId }
       );
-
+   console.log("Enqueuing job to BullMQ:", { videoId, bucket, s3Key });
       console.info(`Job enqueued: ${videoId}`);
     }
     await sqsClient.send(
@@ -53,6 +54,7 @@ export async function startSqsPoller(): Promise<void> {
 
   const poll = async (): Promise<void> => {
     try {
+       
       const response = await sqsClient.send(
         new ReceiveMessageCommand({
           QueueUrl: env.SQS_QUEUE_URL,

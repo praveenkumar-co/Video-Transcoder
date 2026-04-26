@@ -1,0 +1,22 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: transcoder-scaler
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: transcoder-worker
+  # SAFETY: min=1 (always alive), max=1 (never spawn 2nd FFmpeg — MacBook Air safe)
+  minReplicaCount: 1
+  maxReplicaCount: 1
+  # How long to wait before scaling down (keep at high value so worker stays warm)
+  cooldownPeriod: 300
+  triggers:
+    - type: redis
+      metadata:
+        # CRITICAL: Full DNS — KEDA runs in namespace "keda", Redis is in "default"
+        # Short name "redis" resolves to redis.keda.svc.cluster.local (WRONG)
+        # Full FQDN resolves to redis.default.svc.cluster.local (CORRECT)
+        address: "redis.default .svc.cluster.local:6379"
+        listName: "bull:video-transcode:wait"
+        listLength: "1"

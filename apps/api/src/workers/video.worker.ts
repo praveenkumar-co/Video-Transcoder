@@ -1,39 +1,29 @@
-import { Worker, Job } from 'bullmq';
+import { QueueEvents } from 'bullmq';
 import { env } from '../env';
-import { VideoJob } from '../queues/video.queue';
 import { updateVideoStatus } from '../services/video.service';
 import { VideoStatus } from '../types/index';
 
 export function startVideoWorker(): void {
-  const worker = new Worker<VideoJob>(
-    'video-transcode',
-    async (job: Job<VideoJob>) => {
-      const { videoId, s3Key, bucket } = job.data;
-      console.info(` Processing job: ${videoId}`);
-
-      await updateVideoStatus(videoId, VideoStatus.PROCESSING);
-      console.info(`Video details: bucket=${bucket} key=${s3Key}`);
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      await updateVideoStatus(videoId, VideoStatus.COMPLETED);
-
-      console.info(`Job completed: ${videoId}`);
+  const queueEvents = new QueueEvents('video-transcode', {
+    connection: {
+      host: env.REDIS_HOST,
+      port: env.REDIS_PORT,
     },
-    {
-      connection: {
-        host: env.REDIS_HOST,
-        port: env.REDIS_PORT,
-      },
-      concurrency: 3, 
-    }
-  );
-  worker.on('completed', (job) => {
-    console.info(`Job ${job.id} completed`);
   });
 
-  worker.on('failed', (job, err) => {
-    console.error(`Job ${job?.id} failed:`, err);
+  queueEvents.on('active', async ({ jobId }) => {
+    console.info(`Job ${jobId} is active (processing)`);
+    await updateVideoStatus(jobId, VideoStatus.PROCESSING);
+  });
+  queueEvents.on('completed', async ({ jobId }) => {
+    console.info(`Job ${jobId} completed`);
+    await updateVideoStatus(jobId, VideoStatus.COMPLETED);
   });
 
-  console.info('BullMQ worker started');
+  queueEvents.on('failed', async ({ jobId, failedReason }) => {
+    console.error(`Job ${jobId} failed:`, failedReason);
+    await updateVideoStatus(jobId, VideoStatus.FAILED);
+  });
+
+  console.info('BullMQ QueueEvents listener started (monitoring transcoder jobs)');
 }
