@@ -3,7 +3,6 @@ import PresignedUrlRequestSchema from '../validators/zod.validator';
 import { asyncHandler, ApiError, ApiResponse } from 'node-utils-kit';
 import { generatePresignedUploadUrl } from '../services/s3.service';
 import { createVideoRecord, getVideoById, toVideoMetadata } from '../services/video.service';
-import { videoQueue } from '../queues/video.queue';
 import { env } from '../env';
 
 export const requestPresignedUrl = asyncHandler(
@@ -40,26 +39,6 @@ export const getVideoStatus = asyncHandler(
     }
     return res.json(
       new ApiResponse(200, toVideoMetadata(video), 'Video fetched')
-    );
-  }
-);
-
-export const triggerTranscode = asyncHandler(
-  async (req: Request<{ videoId: string }>, res: Response) => {
-    const { videoId } = req.params;
-    const video = await getVideoById(videoId);
-    if (!video) {
-      throw new ApiError(404, 'Video not found');
-    }
-    
-    const job = await videoQueue.add('transcode', {
-      videoId: video.videoId,
-      s3Key: video.s3Key,
-      bucket: video.bucket,
-    });
- 
-    return res.json(
-      new ApiResponse(202, { jobId: job.id }, 'Transcoding job queued')
     );
   }
 );

@@ -1,16 +1,18 @@
+import http from 'http';
+import { registry } from './metrics';
 import { Worker, Job } from 'bullmq';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
+dotenv.config();
 import { VideoJob } from './types';
 import { downloadFromS3, uploadDirectoryToS3 } from './s3.service';
 import { transcode } from './transcoder';
 import { onProgress, clearProgress } from './progress';
+import { jobsCompleted, jobsFailed, jobDuration, activeJobs } from './metrics';
+
 interface VideoDoc {
   _id: string;
   status: string;
@@ -43,10 +45,13 @@ async function markFailed(videoId: string, reason: string) {
     { $set: { status: 'failed', updatedAt: new Date() } }
   );
   console.error(`[${videoId}] DB updated — status: failed. Reason: ${reason}`);
+} 
+if (!process.env.REDIS_HOST) {
+  throw new Error("REDIS_HOST missing");
 }
 const REDIS_CONNECTION = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: parseInt(process.env.REDIS_PORT ?? '6379'),
+  host: process.env.REDIS_HOST,
+  port: Number(process.env.REDIS_PORT),
 };
 
 const worker = new Worker<VideoJob>(
@@ -61,7 +66,8 @@ const worker = new Worker<VideoJob>(
     const inputPath = path.join(tmpDir, 'input.mp4');
     const outputDir = path.join(tmpDir, 'out');
     console.log(`[worker] Temp dir: ${tmpDir}`);
-
+    activeJobs.inc();
+    const endTimer = jobDuration.startTimer();
     try {
       await fs.mkdir(tmpDir, { recursive: true });
       console.info(`[${videoId}] Downloading from S3...`);
@@ -88,21 +94,27 @@ const worker = new Worker<VideoJob>(
       await uploadDirectoryToS3(outputDir, processedBucket, s3OutputPrefix);
 
       await job.updateProgress(100);
-
+      if (!process.env.CLOUDFRONT_DOMAIN) {
+        throw new Error("CLOUDFRONT_DOMAIN missing");
+      }
       const masterPlaylistUrl = `https://${process.env.CLOUDFRONT_DOMAIN}/${s3OutputPrefix}/master.m3u8`;
       await markCompleted(videoId, masterPlaylistUrl);
-
+      jobsCompleted.inc();
+      endTimer();
       console.info(`[${videoId}] Done. Resolutions: ${result.resolutions.join(', ')}`);
-
       return {
         videoId,
         masterPlaylistUrl,
         resolutions: result.resolutions,
+        masterPlaylist: result.masterPlaylistPath,
       };
     } catch (err: any) {
+      jobsFailed.inc();
+      endTimer();
       await markFailed(videoId, err?.message ?? 'unknown error');
       throw err;
     } finally {
+      activeJobs.dec();
       await fs.rm(tmpDir, { recursive: true, force: true });
       console.info(`[${videoId}] Tmp cleaned up`);
     }
@@ -110,6 +122,9 @@ const worker = new Worker<VideoJob>(
   {
     connection: REDIS_CONNECTION,
     concurrency: 1,
+    lockDuration: 600_000,
+    stalledInterval: 30_000,
+    maxStalledCount: 2,
   }
 );
 
@@ -122,3 +137,10 @@ worker.on('failed', (job, err) => {
 });
 
 console.info('Transcoder worker started');
+
+http.createServer(async (_req, res) => {
+  res.setHeader('Content-Type', registry.contentType);
+  res.end(await registry.metrics());
+}).listen(9091, () => {
+  console.info('[worker] Metrics server listening on :9091');
+});

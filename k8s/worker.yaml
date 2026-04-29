@@ -3,8 +3,6 @@ kind: Deployment
 metadata:
   name: transcoder-worker
 spec:
-  # SAFETY: Keep replicas=1. FFmpeg is already multi-output internally.
-  # Scaling to 2+ workers on a MacBook Air would cook the CPU.
   replicas: 1
   selector:
     matchLabels:
@@ -13,6 +11,10 @@ spec:
     metadata:
       labels:
         app: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "9091"
     spec: 
       initContainers:
         - name: wait-for-redis
@@ -32,8 +34,6 @@ spec:
           imagePullPolicy: Never
           resources:
             limits:
-              # SAFETY: 800m = 0.8 cores max — won't spike MacBook Air past ~40% CPU
-              # even with veryfast preset encoding 3 resolutions.
               memory: "1536Mi"
               cpu: "800m"
             requests:
@@ -44,3 +44,19 @@ spec:
                 name: vp-config
             - secretRef:
                 name: vp-secrets
+          ports:
+            - name: metrics
+              containerPort: 9091
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transcoder-worker
+spec:
+  type: ClusterIP
+  selector:
+    app: worker
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 9091

@@ -11,13 +11,18 @@ spec:
     metadata:
       labels:
         app: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "4000"
     spec:
       containers:
         - name: api
           image: video-api
           imagePullPolicy: Never
           ports:
-            - containerPort: 4000
+            - name: http
+              containerPort: 4000
           resources:
             limits:
               memory: "512Mi"

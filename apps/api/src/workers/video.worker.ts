@@ -12,17 +12,22 @@ export function startVideoWorker(): void {
   });
 
   queueEvents.on('active', async ({ jobId }) => {
-    console.info(`Job ${jobId} is active (processing)`);
+    console.info(`[BullMQ] Job ${jobId} is active (processing)`);
     await updateVideoStatus(jobId, VideoStatus.PROCESSING);
   });
+
   queueEvents.on('completed', async ({ jobId }) => {
-    console.info(`Job ${jobId} completed`);
+    console.info(`[BullMQ] Job ${jobId} completed`);
     await updateVideoStatus(jobId, VideoStatus.COMPLETED);
   });
 
   queueEvents.on('failed', async ({ jobId, failedReason }) => {
-    console.error(`Job ${jobId} failed:`, failedReason);
+    console.error(`[BullMQ] Job ${jobId} failed:`, failedReason);
     await updateVideoStatus(jobId, VideoStatus.FAILED);
+  });
+
+  queueEvents.on('error', (error) => {
+    console.error('[BullMQ] QueueEvents error:', error);
   });
 
   console.info('BullMQ QueueEvents listener started (monitoring transcoder jobs)');

@@ -7,7 +7,6 @@ export const globalErrorHandler = (
   res: Response,
   _next: NextFunction
 ) => {
-  // making console.error necessary to get all errors
   console.error("ERROR:", err);
 
   const result = errorHandler(err);

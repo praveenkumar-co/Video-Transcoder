@@ -7,6 +7,9 @@ import { startSqsPoller } from './services/sqs.service';
 import { startVideoWorker } from './workers/video.worker';
 import uploadRoutes from './routes/upload.routes';
 import { globalErrorHandler } from './middleware/error.middleware';
+import { registry, httpRequestDuration, queueDepth } from './metrics';
+import { videoQueue } from './queues/video.queue';
+
 
 const app = express();
 app.use(
@@ -18,6 +21,25 @@ app.use(
   })
 );
 app.use(express.json());
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+  res.on('finish', () => {
+    end({
+      method: req.method,
+      route: req.route?.path ?? req.path,
+      status_code: res.statusCode,
+    });
+  });
+  next();
+});
+app.get('/metrics', async (_req, res) => {
+  const waiting = await videoQueue.getWaitingCount();
+  queueDepth.set(waiting);
+
+  res.set('Content-Type', registry.contentType);
+  res.end(await registry.metrics());
+});
+
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',

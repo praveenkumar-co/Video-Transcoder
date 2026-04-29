@@ -13,7 +13,6 @@ export interface VideoMetaData{
     originalName : string ;
     mimeType : string ;
     sizeBytes : number ;
-
     status : VideoStatus ;
     masterPlaylistUrl?: string;   
     uploadedAt: Date;
@@ -23,7 +22,7 @@ export interface VideoMetaData{
 export interface PresignedUrlRequest{
     fileName : string;
     mimeType : string ;
-    sizeBytes : string ;
+    sizeBytes : number ;
 }
 
 export interface PresignedUrlResponse {
@@ -48,7 +47,7 @@ export interface TranscodeJob {
   s3Key: string;
   bucket: string;
 
-  outputFormats: ('1080p' | '720p' | '480p' | '360p')[];
+  outputFormats: ('1080p' | '720p' | '360p')[];
 }
 export interface TranscodeProgress {
     videoId : string ;

@@ -6,7 +6,6 @@ export interface VideoJob {
   s3Key: string;
   bucket: string;
 }
-
 export const videoQueue = new Queue<VideoJob>('video-transcode', {
   connection: {
     host: env.REDIS_HOST,

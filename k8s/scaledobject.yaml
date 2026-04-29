@@ -6,13 +6,14 @@ metadata:
 spec:
   scaleTargetRef:
     name: transcoder-worker
-  minReplicaCount: 0
   maxReplicaCount: 10
   pollingInterval: 5
   cooldownPeriod: 30
+  minReplicaCount: 1
   triggers:
     - type: redis
       metadata:
         address: redis.default.svc.cluster.local:6379  
         listName: bull:video-transcode:wait
-        listLength: "3"
+        listLength: "1"
+# listlength refer to number of jobs handled by pods 

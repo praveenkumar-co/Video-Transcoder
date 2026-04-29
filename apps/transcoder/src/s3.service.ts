@@ -9,15 +9,22 @@ import { createReadStream } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import dotenv from 'dotenv';
+dotenv.config();
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
+if (!process.env.REDIS_HOST) {
+  throw new Error("REDIS_HOST missing");
+}
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION!,
+  region: process.env.AWS_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
+  requestHandler: new NodeHttpHandler({
+    requestTimeout: 300000, 
+    connectionTimeout: 10000, 
+  }),
 });
 
 export async function downloadFromS3(
@@ -38,21 +45,32 @@ export async function downloadFromS3(
       throw new Error('No body in S3 response');
     }
 
-    return new Promise((resolve, reject) => {
-      // We import createWriteStream dynamically or rely on it from 'fs' if added
+    const downloadPromise = new Promise<void>((resolve, reject) => {
       const { createWriteStream } = require('fs');
       const writable = createWriteStream(localPath);
       const readable = response.Body as any;
 
       readable.pipe(writable);
 
-      readable.on('error', (err: any) => { console.error('Readable error', err); reject(err); });
-      writable.on('error', (err: any) => { console.error('Writable error', err); reject(err); });
+      readable.on('error', (err: any) => { 
+        console.error(`[${key}] Readable error:`, err); 
+        reject(err); 
+      });
+      writable.on('error', (err: any) => { 
+        console.error(`[${key}] Writable error:`, err); 
+        reject(err); 
+      });
       writable.on('finish', () => {
         console.info(`Downloaded: ${key} → ${localPath}`);
         resolve();
       });
     });
+
+    const timeoutPromise = new Promise<void>((_, reject) => {
+      setTimeout(() => reject(new Error(`Download timeout for ${key} after 10 minutes`)), 600_000);
+    });
+
+    return Promise.race([downloadPromise, timeoutPromise]);
   } catch (err) {
     console.error("Error in downloadFromS3 s3Client.send", err);
     throw err;
@@ -82,7 +100,6 @@ export async function uploadDirectoryToS3(
             Key: s3Key,
             Body: createReadStream(filePath),
             ContentType: contentType,
-            // HLS segments are immutable — cache aggressively
             CacheControl: filePath.endsWith('.ts')
               ? 'max-age=31536000'
               : 'max-age=0, no-cache',
