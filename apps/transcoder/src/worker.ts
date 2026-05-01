@@ -51,8 +51,12 @@ if (!process.env.REDIS_HOST) {
 }
 const REDIS_CONNECTION = {
   host: process.env.REDIS_HOST,
-  port: Number(process.env.REDIS_PORT),
+  port: Number(process.env.REDIS_PORT ?? 6379),
 };
+const WORKER_CONCURRENCY = Math.max(
+  1,
+  Math.min(Number(process.env.WORKER_CONCURRENCY ?? 1), 2)
+);
 
 const worker = new Worker<VideoJob>(
   'video-transcode',
@@ -111,9 +115,19 @@ const worker = new Worker<VideoJob>(
     } catch (err: any) {
       jobsFailed.inc();
       endTimer();
-      await markFailed(videoId, err?.message ?? 'unknown error');
+      const attemptsAllowed = job.opts.attempts ?? 1;
+      const isFinalAttempt = job.attemptsMade + 1 >= attemptsAllowed;
+
+      if (isFinalAttempt) {
+        await markFailed(videoId, err?.message ?? 'unknown error');
+      } else {
+        console.warn(
+          `[${videoId}] Attempt ${job.attemptsMade + 1}/${attemptsAllowed} failed; BullMQ will retry. Reason: ${err?.message ?? 'unknown error'}`
+        );
+      }
       throw err;
     } finally {
+      clearProgress(videoId);
       activeJobs.dec();
       await fs.rm(tmpDir, { recursive: true, force: true });
       console.info(`[${videoId}] Tmp cleaned up`);
@@ -121,7 +135,7 @@ const worker = new Worker<VideoJob>(
   },
   {
     connection: REDIS_CONNECTION,
-    concurrency: 1,
+    concurrency: WORKER_CONCURRENCY,
     lockDuration: 600_000,
     stalledInterval: 30_000,
     maxStalledCount: 2,
@@ -137,6 +151,16 @@ worker.on('failed', (job, err) => {
 });
 
 console.info('Transcoder worker started');
+
+async function shutdown(signal: string): Promise<void> {
+  console.info(`[worker] ${signal} received, closing worker...`);
+  await worker.close();
+  await mongoose.disconnect();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 http.createServer(async (_req, res) => {
   res.setHeader('Content-Type', registry.contentType);

@@ -71,7 +71,15 @@ export async function verifyObjectExists(
   try {
     await s3Client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return true;
-  } catch {
-    return false;
+  } catch (err: any) {
+    const statusCode = err?.$metadata?.httpStatusCode;
+    const code = err?.name ?? err?.Code;
+
+    if (statusCode === 404 || code === 'NotFound' || code === 'NoSuchKey') {
+      return false;
+    }
+
+    console.error(`[S3] Failed to verify s3://${bucket}/${key}:`, err);
+    throw err;
   }
 }

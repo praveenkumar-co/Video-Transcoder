@@ -3,7 +3,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import { env } from './env';
 import { connectDB } from './config/db.config';
-import { startSqsPoller } from './services/sqs.service';
+import { startSqsPoller, startUploadReconciler } from './services/sqs.service';
 import { startVideoWorker } from './workers/video.worker';
 import uploadRoutes from './routes/upload.routes';
 import { globalErrorHandler } from './middleware/error.middleware';
@@ -61,6 +61,7 @@ async function bootstrap(): Promise<void> {
 
     startVideoWorker();
     startSqsPoller();
+    startUploadReconciler();
 
   } catch (err) {
     console.error('Bootstrap failed:', err);

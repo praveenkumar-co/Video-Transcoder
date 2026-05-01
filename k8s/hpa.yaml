@@ -6,7 +6,7 @@
 # and scaling stops working entirely.
 #
 # Scaling for transcoder-worker is managed by:
-#   ./scaledobject.yaml  (min=1, max=1 — safe for MacBook Air)
+#   ./scaledobject.yaml  (min=1, max=2 — safe for MacBook Air)
 #
 # If KEDA is ever removed, you can un-comment and apply this file instead.
 #

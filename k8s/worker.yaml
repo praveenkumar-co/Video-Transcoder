@@ -35,10 +35,10 @@ spec:
           resources:
             limits:
               memory: "1536Mi"
-              cpu: "800m"
+              cpu: "1200m"
             requests:
               memory: "512Mi"
-              cpu: "200m"
+              cpu: "300m"
           envFrom:
             - configMapRef:
                 name: vp-config

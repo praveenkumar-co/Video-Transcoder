@@ -21,6 +21,7 @@ const s3Client = new S3Client({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
+  maxAttempts: 3,
   requestHandler: new NodeHttpHandler({
     requestTimeout: 300000, 
     connectionTimeout: 10000, 
@@ -85,7 +86,10 @@ export async function uploadDirectoryToS3(
   const files = await getAllFiles(localDir);
   console.info(`[uploadDirectoryToS3] Found ${files.length} file(s) to upload — uploading in parallel`);
 
-  const CONCURRENCY = 10;
+  const CONCURRENCY = Math.max(
+    1,
+    Math.min(Number(process.env.S3_UPLOAD_CONCURRENCY ?? 4), 8)
+  );
   for (let i = 0; i < files.length; i += CONCURRENCY) {
     const batch = files.slice(i, i + CONCURRENCY);
     await Promise.all(

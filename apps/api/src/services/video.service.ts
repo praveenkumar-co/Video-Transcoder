@@ -41,6 +41,39 @@ export async function updateVideoStatus(
   );
 }
 
+export async function markVideoQueued(videoId: string): Promise<VideoDocument | null> {
+  return VideoModel.findOneAndUpdate(
+    { _id: videoId, status: VideoStatus.PENDING },
+    { status: VideoStatus.QUEUED, updatedAt: new Date() },
+    { returnDocument: 'after' }
+  );
+}
+
+export async function getRecoverableUploadCandidates(
+  pendingOlderThanMs: number,
+  queuedOlderThanMs: number,
+  limit = 25
+): Promise<VideoDocument[]> {
+  const pendingCutoff = new Date(Date.now() - pendingOlderThanMs);
+  const queuedCutoff = new Date(Date.now() - queuedOlderThanMs);
+
+  return VideoModel.find({
+    $or: [
+      {
+        status: VideoStatus.PENDING,
+        uploadedAt: { $lte: pendingCutoff },
+      },
+      {
+        status: VideoStatus.QUEUED,
+        updatedAt: { $lte: queuedCutoff },
+      },
+    ],
+  })
+    .sort({ uploadedAt: 1 })
+    .limit(limit)
+    .exec();
+}
+
 export async function getVideoById(videoId: string): Promise<VideoDocument | null> {
   return VideoModel.findById(videoId);
 }

@@ -8,6 +8,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 const FFMPEG_PATH  = process.env.FFMPEG_PATH  || '/usr/bin/ffmpeg';
 const FFPROBE_PATH = process.env.FFPROBE_PATH || '/usr/bin/ffprobe';
+const FFMPEG_THREADS = Math.max(
+  1,
+  Math.min(Number(process.env.FFMPEG_THREADS ?? 2), os.cpus().length)
+);
 
 try {
   execSync(`${FFMPEG_PATH} -version`,  { stdio: 'ignore' });
@@ -160,7 +164,7 @@ export async function transcode(options: TranscodeOptions): Promise<TranscodeRes
   }
   args.push(
     '-preset',   'veryfast',
-    '-threads',  Math.max(1, Math.floor(os.cpus().length / 2)).toString(),
+    '-threads',  FFMPEG_THREADS.toString(),
     '-f',        'hls',
     '-var_stream_map',        varStreamMap,
     '-master_pl_name',        'master.m3u8',
