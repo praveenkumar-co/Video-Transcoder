@@ -123,7 +123,7 @@ async function processMessage(body: string, receiptHandle: string): Promise<void
         console.warn(`[SQS] Unrecognised S3 key, skipping: ${s3Key}`);
         continue;
       }
-      const videoId = match[1];
+      const videoId = match[1];  
       const result = await enqueueTranscodeJob({
         videoId,
         bucket,
