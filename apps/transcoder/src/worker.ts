@@ -157,7 +157,7 @@ async function shutdown(signal: string): Promise<void> {
   await worker.close();
   await mongoose.disconnect();
   process.exit(0);
-}
+} 
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
