@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import PresignedUrlRequestSchema from '../validators/zod.validator';
 import { asyncHandler, ApiError, ApiResponse } from 'node-utils-kit';
 import { generatePresignedUploadUrl } from '../services/s3.service';
-import { createVideoRecord, getVideoById, toVideoMetadata } from '../services/video.service';
+import { createVideoRecord, getVideoById, listRecentVideos, toVideoMetadata } from '../services/video.service';
 import { env } from '../env';
 
 export const requestPresignedUrl = asyncHandler(
@@ -39,6 +39,15 @@ export const getVideoStatus = asyncHandler(
     }
     return res.json(
       new ApiResponse(200, toVideoMetadata(video), 'Video fetched')
+    );
+  }
+);
+
+export const listVideos = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const videos = await listRecentVideos();
+    return res.json(
+      new ApiResponse(200, videos.map(toVideoMetadata), 'Videos fetched')
     );
   }
 );

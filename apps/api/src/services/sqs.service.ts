@@ -112,7 +112,6 @@ async function processMessage(body: string, receiptHandle: string): Promise<void
   }
   try {
     let shouldDelete = true;
-
     for (const record of s3Event.Records) {
       const bucket = record.s3.bucket.name;
       const s3Key = decodeURIComponent(

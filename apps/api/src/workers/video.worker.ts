@@ -10,7 +10,6 @@ export function startVideoWorker(): void {
       port: env.REDIS_PORT,
     },
   });
-
   queueEvents.on('active', async ({ jobId }) => {
     console.info(`[BullMQ] Job ${jobId} is active (processing)`);
     await updateVideoStatus(jobId, VideoStatus.PROCESSING);
@@ -29,6 +28,5 @@ export function startVideoWorker(): void {
   queueEvents.on('error', (error) => {
     console.error('[BullMQ] QueueEvents error:', error);
   });
-
   console.info('BullMQ QueueEvents listener started (monitoring transcoder jobs)');
-}
+} 

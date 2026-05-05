@@ -98,10 +98,11 @@ const worker = new Worker<VideoJob>(
       await uploadDirectoryToS3(outputDir, processedBucket, s3OutputPrefix);
 
       await job.updateProgress(100);
-      if (!process.env.CLOUDFRONT_DOMAIN) {
-        throw new Error("CLOUDFRONT_DOMAIN missing");
-      }
-      const masterPlaylistUrl = `https://${process.env.CLOUDFRONT_DOMAIN}/${s3OutputPrefix}/master.m3u8`;
+      const region = process.env.AWS_REGION || 'us-east-1';
+      const playbackOrigin = process.env.CLOUDFRONT_DOMAIN
+        ? `https://${process.env.CLOUDFRONT_DOMAIN}`
+        : `https://${processedBucket}.s3.${region}.amazonaws.com`;
+      const masterPlaylistUrl = `${playbackOrigin}/${s3OutputPrefix}/master.m3u8`;
       await markCompleted(videoId, masterPlaylistUrl);
       jobsCompleted.inc();
       endTimer();

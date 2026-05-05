@@ -3,6 +3,7 @@
 
 import { VideoModel, VideoDocument } from '../models/video.model';
 import { VideoStatus, VideoMetaData } from '../types/index';
+import { env } from '../env';
 
 export async function createVideoRecord(params: {
   videoId: string;
@@ -78,6 +79,25 @@ export async function getVideoById(videoId: string): Promise<VideoDocument | nul
   return VideoModel.findById(videoId);
 }
 
+export async function listRecentVideos(limit = 12): Promise<VideoDocument[]> {
+  return VideoModel.find()
+    .sort({ updatedAt: -1, uploadedAt: -1 })
+    .limit(limit)
+    .exec();
+}
+
+function getPlayableMasterPlaylistUrl(doc: VideoDocument): string | undefined {
+  if (doc.status !== VideoStatus.COMPLETED) {
+    return doc.masterPlaylistUrl;
+  }
+
+  if (env.CLOUDFRONT_DOMAIN) {
+    return `https://${env.CLOUDFRONT_DOMAIN}/processed/${doc.videoId}/master.m3u8`;
+  }
+
+  return `https://${env.S3_PROCESSED_BUCKET}.s3.${env.AWS_REGION}.amazonaws.com/processed/${doc.videoId}/master.m3u8`;
+}
+
 export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
   return {
     videoId: doc.videoId,
@@ -87,7 +107,7 @@ export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
     mimeType: doc.mimeType,
     sizeBytes: doc.sizeBytes,
     status: doc.status,
-    masterPlaylistUrl: doc.masterPlaylistUrl,   
+    masterPlaylistUrl: getPlayableMasterPlaylistUrl(doc),
     uploadedAt: doc.uploadedAt,
     updatedAt: doc.updatedAt,
   };

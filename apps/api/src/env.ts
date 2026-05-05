@@ -13,7 +13,8 @@ const EnvSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string(),
   AWS_SECRET_ACCESS_KEY: z.string(),
   S3_RAW_BUCKET: z.string(),
-  S3_PROCESSED_BUCKET: z.string().default('video-transcoder-processed'),
+  S3_PROCESSED_BUCKET: z.string().default('video-transcoder-processed-praveen'),
+  CLOUDFRONT_DOMAIN: z.string().optional(),
 
   PRESIGNED_URL_EXPIRY: z.coerce.number().default(300),
   REDIS_HOST: z.string().default("localhost"),

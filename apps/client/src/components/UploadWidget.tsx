@@ -1,8 +1,21 @@
-import { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { useUpload } from '../hooks/useUpload';
+import { UploadCloud, CheckCircle2, AlertCircle, FileVideo, Loader2, RotateCcw } from 'lucide-react';
 
-export function UploadWidget() {
+interface UploadWidgetProps {
+  onUploadComplete?: (videoId: string) => void;
+}
+
+export function UploadWidget({ onUploadComplete }: UploadWidgetProps) {
   const { state, upload, reset } = useUpload();
+
+  useEffect(() => {
+    if (state.status === 'complete' && state.videoId && onUploadComplete) {
+      // Let user see completion for a second before navigating
+      const timer = setTimeout(() => onUploadComplete(state.videoId!), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [state, onUploadComplete]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
@@ -22,24 +35,24 @@ export function UploadWidget() {
   );
 
   return (
-    <div style={{ maxWidth: 480, margin: '40px auto', fontFamily: 'sans-serif' }}>
+    <div className="upload-widget">
       {state.status === 'idle' && (
         <div
+          className="upload-zone"
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
-          style={{
-            border: '2px dashed #ccc',
-            borderRadius: 12,
-            padding: '48px 24px',
-            textAlign: 'center',
-            cursor: 'pointer',
-          }}
           onClick={() => document.getElementById('file-input')?.click()}
         >
-          <p style={{ margin: 0, color: '#555' }}>Drag & drop a video or click to select</p>
-          <p style={{ margin: '8px 0 0', fontSize: 12, color: '#999' }}>
-            MP4, MOV, AVI — max 5 GB
-          </p>
+          <div className="upload-icon">
+            <div className="upload-icon-shell">
+              <UploadCloud size={48} strokeWidth={1.7} />
+            </div>
+          </div>
+          <p className="upload-title">Drop a source video here</p>
+          <p className="upload-subtitle">MP4, MOV or AVI - up to 5 GB</p>
+          <button className="btn btn-primary upload-action" type="button">
+            <UploadCloud size={18} /> Select Video
+          </button>
           <input
             id="file-input"
             type="file"
@@ -51,40 +64,59 @@ export function UploadWidget() {
       )}
 
       {state.status === 'requesting' && (
-        <p style={{ textAlign: 'center', color: '#555' }}>Requesting upload URL…</p>
+        <div className="centered-message">
+          <div className="state-icon-shell">
+            <Loader2 className="pulse-anim" size={40} color="var(--accent-color)" />
+          </div>
+          <p>Preparing secure upload...</p>
+        </div>
       )}
 
       {state.status === 'uploading' && (
-        <div>
-          <p style={{ margin: '0 0 8px', color: '#555' }}>
-            Uploading… {state.progress.percentage}%
-          </p>
-          <div style={{ background: '#eee', borderRadius: 4, height: 8 }}>
-            <div
-              style={{
-                width: `${state.progress.percentage}%`,
-                height: '100%',
-                background: '#3b82f6',
-                borderRadius: 4,
-                transition: 'width 0.1s',
-              }}
-            />
+        <div className="progress-container">
+          <div className="progress-shell">
+            <div className="progress-icon-shell">
+              <FileVideo size={32} color="var(--accent-color)" />
+            </div>
+            <div className="progress-body">
+              <div className="progress-header">
+                <span>Uploading source asset</span>
+                <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{state.progress.percentage}%</span>
+              </div>
+              <div className="progress-bar-bg">
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${state.progress.percentage}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {state.status === 'complete' && (
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ color: '#16a34a' }}>✓ Upload complete</p>
-          <p style={{ fontSize: 12, color: '#999' }}>Video ID: {state.videoId}</p>
-          <button onClick={reset} style={{ marginTop: 12 }}>Upload another</button>
+        <div className="centered-message">
+          <div className="state-icon-shell success">
+            <CheckCircle2 size={56} color="var(--success-color)" />
+          </div>
+          <p className="state-title success">
+            Upload complete
+          </p>
+          <p className="upload-subtitle">
+            Opening the processing dashboard...
+          </p>
         </div>
       )}
 
       {state.status === 'error' && (
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ color: '#dc2626' }}>{state.message}</p>
-          <button onClick={reset} style={{ marginTop: 12 }}>Try again</button>
+        <div className="centered-message">
+          <div className="state-icon-shell danger">
+            <AlertCircle size={56} color="var(--danger-color)" />
+          </div>
+          <p className="state-title danger">{state.message}</p>
+          <button className="btn btn-secondary" onClick={reset} style={{ marginTop: '1.5rem' }}>
+            <RotateCcw size={18} /> Try Again
+          </button>
         </div>
       )}
     </div>

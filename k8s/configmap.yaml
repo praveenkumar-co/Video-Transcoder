@@ -10,7 +10,7 @@ data:
   AWS_REGION: "us-east-1"
   S3_RAW_BUCKET: "video-transcoder-raw-praveen"
   S3_PROCESSED_BUCKET: "video-transcoder-processed-praveen"
-  CLOUDFRONT_DOMAIN: "d26bqkv291jafs.cloudfront.net"
+  CLOUDFRONT_DOMAIN: "d1uj526m71dd4i.cloudfront.net"
   FFMPEG_PATH: "/usr/bin/ffmpeg"
   FFPROBE_PATH: "/usr/bin/ffprobe"
   FFMPEG_THREADS: "2"

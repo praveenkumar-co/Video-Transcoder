@@ -2,7 +2,7 @@ export interface PresignedUrlResponse{
     uploadUrl: string;
     videoId: string;
     s3Key: string;
-    exporiresIn: number;
+    expiresIn: number;
 }
 
 export interface UploadProgress {
@@ -17,4 +17,16 @@ export type UploadState =
   | { status: 'uploading'; progress: UploadProgress }
   | { status: 'complete'; videoId: string }
   | { status: 'error'; message: string };
-  
+
+export interface VideoMetaData {
+  videoId: string;
+  s3Key: string;
+  bucket: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed';
+  masterPlaylistUrl?: string;
+  uploadedAt: string;
+  updatedAt: string;
+}
