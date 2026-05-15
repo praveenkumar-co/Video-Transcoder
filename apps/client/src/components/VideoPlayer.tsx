@@ -28,9 +28,23 @@ export function VideoPlayer({ url }: VideoPlayerProps) {
         // video.play().catch(e => console.log('Autoplay prevented', e));
       });
       
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        console.error('HLS error:', { url, ...data });
-      });
+     hls.on(Hls.Events.ERROR, (_event, data) => {
+  console.error('HLS error:', data);
+
+  if (data.fatal) {
+    switch (data.type) {
+      case Hls.ErrorTypes.NETWORK_ERROR:
+        hls?.startLoad();
+        break;
+      case Hls.ErrorTypes.MEDIA_ERROR:
+        hls?.recoverMediaError();
+        break;
+      default:
+        hls?.destroy();
+        break;
+    }
+  }
+});
     } 
     // For Safari which has native HLS support
     else if (video.canPlayType('application/vnd.apple.mpegurl')) {

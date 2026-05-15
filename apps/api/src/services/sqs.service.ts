@@ -9,10 +9,11 @@ import { S3EventNotification } from '../types/index';
 import { verifyObjectExists } from '../services/s3.service';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import {
-  getRecoverableUploadCandidates,
+  getRecoverableUploadCandidates, 
   getVideoById,
   markVideoQueued,
 } from './video.service';
+// importing from video Status
 import { VideoStatus } from '../types/index';
 
 const sqsClient = new SQSClient({

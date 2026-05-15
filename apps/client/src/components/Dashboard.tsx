@@ -16,15 +16,17 @@ export function Dashboard({ videoId, activeTab, onTabChange, onUploadNew }: Dash
   const [video, setVideo] = useState<VideoMetaData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStatus = async () => {
-    try {
-      const data = await getVideoStatus(videoId);
-      setVideo(data);
+const fetchStatus = async () => {
+  try {
+    const data = await getVideoStatus(videoId);
+    setVideo(data);
+    if (error) {
       setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch status');
     }
-  };
+  } catch (err) {
+    console.error(err);
+  }
+};
 
   useEffect(() => {
     fetchStatus();
@@ -88,7 +90,7 @@ export function Dashboard({ videoId, activeTab, onTabChange, onUploadNew }: Dash
               </div>
               Stream Preview
             </h2>
-            {isCompleted && video.masterPlaylistUrl ? (
+            {video.masterPlaylistUrl ? (
               <VideoPlayer url={video.masterPlaylistUrl} />
             ) : (
               <div className="centered-message" style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -142,7 +144,7 @@ export function Dashboard({ videoId, activeTab, onTabChange, onUploadNew }: Dash
                 <p>Assets are compiling. Exports will be available upon completion.</p>
               </div>
             ) : (
-              <div style={{ display: 'grid', gap: '1.5rem' }}>
+              <div style={{ display: 'grid', gap:  '1.5rem' }}>
                 <div className="feature-card">
                   <div>
                     <h3 style={{ marginBottom: '0.4rem', fontSize: '1.2rem', color: 'var(--text-primary)' }}>HLS Master Playlist</h3>

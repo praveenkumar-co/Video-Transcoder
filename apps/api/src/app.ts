@@ -14,10 +14,8 @@ import { videoQueue } from './queues/video.queue';
 const app = express();
 app.use(
   cors({
-    origin:
-      env.NODE_ENV === 'development'
-        ? '*'
-        : process.env.ALLOWED_ORIGINS,
+     origin: true,
+    credentials: true,
   })
 );
 app.use(express.json());
