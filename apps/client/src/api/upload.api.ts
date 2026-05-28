@@ -1,7 +1,5 @@
 import { PresignedUrlResponse } from '../types';
-
-const API_BASE =
-  import.meta.env.VITE_API_URL ?? 'https://localhost:8443';
+import { API_BASE } from './config';
 
 export async function requestPresignedUrl(
   file: File
@@ -74,5 +72,71 @@ export async function listVideos(): Promise<import('../types').VideoMetaData[]> 
     throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
   }
   const body = await res.json();
+  return body.data;
+}
+
+export async function triggerTranscode(videoId: string, resolution?: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/process/transcode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId, resolution }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  return body.data;
+}
+
+export async function triggerCompress(videoId: string, targetSizeMB: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/process/compress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId, targetSizeMB }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  return body.data;
+}
+
+export async function triggerConvert(videoId: string, outputFormat: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/process/convert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId, outputFormat }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  return body.data;
+}
+
+export async function triggerExtractAudio(videoId: string, audioFormat: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/process/extract-audio`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId, audioFormat }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  return body.data;
+}
+
+export async function triggerTrim(videoId: string, startTime: number, endTime: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/process/trim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId, startTime, endTime }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  return body.data;
+}
+
+export async function triggerDownloadUrl(sourceUrl: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/process/download-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sourceUrl }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
   return body.data;
 }

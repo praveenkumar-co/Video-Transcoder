@@ -1,3 +1,10 @@
+export type JobType =
+  | 'transcode'
+  | 'compress'
+  | 'convert'
+  | 'extract-audio'
+  | 'trim'
+  | 'download-url';
 
 export enum VideoStatus {
   PENDING = 'pending',
@@ -15,6 +22,7 @@ export interface VideoMetaData{
     sizeBytes : number ;
     status : VideoStatus ;
     masterPlaylistUrl?: string;   
+    outputUrl?: string;
     uploadedAt: Date;
     updatedAt: Date; 
 }
@@ -42,12 +50,19 @@ export interface S3EventRecord {
 export interface S3EventNotification {
     Records : S3EventRecord[]; 
 }
+
 export interface TranscodeJob {
   videoId: string;
   s3Key: string;
   bucket: string;
-
-  outputFormats: ('1080p' | '720p' | '360p')[];
+  jobType: JobType;
+  resolution?: '4K' | '1080p' | '720p' | '480p' | '360p' | '240p';
+  targetSizeMB?: number;
+  outputFormat?: 'mp4' | 'webm' | 'mov' | 'avi' | 'mkv';
+  audioFormat?: 'mp3' | 'wav' | 'aac';
+  startTime?: number;
+  endTime?: number;
+  sourceUrl?: string;
 }
 export interface TranscodeProgress {
     videoId : string ;

@@ -6,15 +6,29 @@ import { connectDB } from './config/db.config';
 import { startSqsPoller, startUploadReconciler } from './services/sqs.service';
 import { startVideoWorker } from './workers/video.worker';
 import uploadRoutes from './routes/upload.routes';
+import processRoutes from './routes/process.routes';
+import contactRoutes from './routes/contact.routes';
 import { globalErrorHandler } from './middleware/error.middleware';
 import { registry, httpRequestDuration, queueDepth } from './metrics';
 import { videoQueue } from './queues/video.queue';
 
 
 const app = express();
+const corsOrigins = env.CORS_ORIGIN
+  ?.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-     origin: true,
+    origin: (origin, callback) => {
+      if (!origin || !corsOrigins?.length || corsOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   })
 );
@@ -45,7 +59,37 @@ app.get('/health', (_req, res) => {
     mongoState: mongoose.connection.readyState,
   });
 });
+
+app.get('/ready', async (_req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        status: 'not-ready',
+        mongoState: mongoose.connection.readyState,
+      });
+    }
+
+    const redisClient = await videoQueue.client;
+    await redisClient.ping();
+
+    return res.json({
+      status: 'ready',
+      mongoState: mongoose.connection.readyState,
+      redis: 'ok',
+    });
+  } catch (err) {
+    console.error('[readiness] Dependency check failed:', err);
+    return res.status(503).json({
+      status: 'not-ready',
+      mongoState: mongoose.connection.readyState,
+      redis: 'failed',
+    });
+  }
+});
+
 app.use('/api/upload', uploadRoutes);
+app.use('/api/process', processRoutes);
+app.use('/api/contact', contactRoutes);
 app.use(globalErrorHandler);
 async function bootstrap(): Promise<void> {
   try {

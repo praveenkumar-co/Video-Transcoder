@@ -108,6 +108,7 @@ export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
     sizeBytes: doc.sizeBytes,
     status: doc.status,
     masterPlaylistUrl: getPlayableMasterPlaylistUrl(doc),
+    outputUrl: doc.outputUrl,
     uploadedAt: doc.uploadedAt,
     updatedAt: doc.updatedAt,
   };

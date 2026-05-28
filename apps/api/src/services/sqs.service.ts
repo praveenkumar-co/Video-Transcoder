@@ -8,6 +8,7 @@ import { videoQueue } from '../queues/video.queue';
 import { S3EventNotification } from '../types/index';
 import { verifyObjectExists } from '../services/s3.service';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { Agent as HttpsAgent } from 'https';
 import {
   getRecoverableUploadCandidates, 
   getVideoById,
@@ -23,6 +24,10 @@ const sqsClient = new SQSClient({
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
   },
   requestHandler: new NodeHttpHandler({
+    httpsAgent: new HttpsAgent({
+      keepAlive: true,
+      family: 4,
+    }),
     requestTimeout: Math.max(env.SQS_WAIT_TIME_SECONDS * 1000 + 5000, 30_000),
     connectionTimeout: 10000,
     throwOnRequestTimeout: true,
@@ -83,7 +88,7 @@ async function enqueueTranscodeJob(params: {
 
   await videoQueue.add(
     'transcode',
-    { videoId, s3Key, bucket },
+    { videoId, s3Key, bucket, jobType: 'transcode' },
     { jobId: videoId }
   );
   await markVideoQueued(videoId);

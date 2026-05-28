@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { env } from "../env";
 
 import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { Agent as HttpsAgent } from 'https';
 
 const s3Client = new S3Client({ 
   region: env.AWS_REGION,
@@ -16,6 +17,10 @@ const s3Client = new S3Client({
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
   },
   requestHandler: new NodeHttpHandler({
+    httpsAgent: new HttpsAgent({
+      keepAlive: true,
+      family: 4,
+    }),
     requestTimeout: 15000,
     connectionTimeout: 5000,
   }),

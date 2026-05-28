@@ -4,13 +4,15 @@ metadata:
   name: vp-config
 data:
   NODE_ENV: "development"
+  NODE_OPTIONS: "--dns-result-order=ipv4first"
   PORT: "4000"
+  CORS_ORIGIN: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://videoforge.local"
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
   AWS_REGION: "us-east-1"
-  S3_RAW_BUCKET: "video-transcoder-raw-praveen"
-  S3_PROCESSED_BUCKET: "video-transcoder-processed-praveen"
-  CLOUDFRONT_DOMAIN: "d1uj526m71dd4i.cloudfront.net"
+  S3_RAW_BUCKET: "replace-with-your-raw-bucket"
+  S3_PROCESSED_BUCKET: "replace-with-your-processed-bucket"
+  CLOUDFRONT_DOMAIN: ""
   FFMPEG_PATH: "/usr/bin/ffmpeg"
   FFPROBE_PATH: "/usr/bin/ffprobe"
   FFMPEG_THREADS: "2"

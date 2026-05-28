@@ -27,6 +27,7 @@ export interface VideoMetaData {
   sizeBytes: number;
   status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed';
   masterPlaylistUrl?: string;
+  outputUrl?: string;
   uploadedAt: string;
   updatedAt: string;
 }

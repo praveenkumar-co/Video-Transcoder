@@ -23,6 +23,17 @@ spec:
           ports:
             - name: http
               containerPort: 4000
+          env:
+            - name: NODE_OPTIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: vp-config
+                  key: NODE_OPTIONS
+            - name: CORS_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: vp-config
+                  key: CORS_ORIGIN
           resources:
             limits:
               memory: "384Mi"
@@ -37,7 +48,7 @@ spec:
                 name: vp-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 4000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -53,10 +64,9 @@ kind: Service
 metadata:
   name: api
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
     - port: 4000
       targetPort: 4000
-      nodePort: 32537
   selector:
     app: api  
