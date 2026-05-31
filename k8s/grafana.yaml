@@ -17,11 +17,6 @@ spec:
           image: grafana/grafana:10.4.0
           ports:
             - containerPort: 3000
-          env:
-            - name: GF_SECURITY_ADMIN_PASSWORD
-              value: "admin"         
-            - name: GF_AUTH_ANONYMOUS_ENABLED
-              value: "false"
           resources:
             limits:
               memory: "256Mi"
@@ -42,3 +37,34 @@ spec:
       nodePort: 30300
   selector:
     app: grafana
+
+# Deployment = HR Manager
+
+# Service = Reception Desk
+
+# HR manager ensures employees exist.
+
+# Reception desk ensures customers can reach employees.
+
+# Both are required.
+# ---------------------------
+# Deployment
+
+# Handles:
+
+# Pod creation
+# Pod restart
+# Scaling
+# Rolling updates
+
+# ----------------------------
+
+# Service
+
+# Handles:
+
+# Networking
+# Stable DNS
+# Load balancing
+# Pod discovery
+
