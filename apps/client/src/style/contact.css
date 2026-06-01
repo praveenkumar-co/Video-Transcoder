@@ -1,4 +1,4 @@
-/* ─── CONTACT US BACKDROP OVERLAY & 3D CAROUSEL SCOPED STYLING ─── */
+
 .vf-contact-backdrop {
   position: fixed;
   inset: 0;
@@ -135,6 +135,11 @@
   color: #0f172a;
   font-weight: 800;
   text-align: left;
+  background: rgba(15, 23, 42, 0.05);
+  padding: 8px 18px;
+  border-radius: 14px;
+  display: inline-block;
+  border: 1px solid rgba(15, 23, 42, 0.07);
 }
 
 .vf-contact-copy p {
@@ -598,4 +603,93 @@
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1.0); }
 }
+
+/* Star Rating styling */
+.vf-star-rating {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.vf-star-rating button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  color: #cbd5e1; /* Default slate-300 */
+  transition: transform 0.2s, color 0.2s;
+  display: grid;
+  place-items: center;
+}
+
+.vf-star-rating button:hover {
+  transform: scale(1.25);
+}
+
+.vf-star-rating button.active {
+  color: #ffcb57; /* Gold/yellow color */
+  filter: drop-shadow(0 0 8px rgba(255, 203, 87, 0.7));
+}
+
+.vf-star-label {
+  font-size: 13px;
+  color: #64748b;
+  margin-left: 8px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Static, non-animated cards layout overrides for Feedback form */
+.vf-revolve-wrapper.no-animate {
+  height: auto !important;
+  perspective: none !important;
+  margin-top: 24px !important;
+}
+
+.vf-revolve.no-animate {
+  width: 100% !important;
+  height: auto !important;
+  animation: none !important;
+  transform: none !important;
+  transform-style: flat !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 16px !important;
+}
+
+.vf-revolve.no-animate .vf-card {
+  position: relative !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 160px !important;
+  left: 0 !important;
+  top: 0 !important;
+  transform: none !important;
+  transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+  margin: 0 !important;
+}
+
+.vf-revolve.no-animate .vf-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+@media (max-width: 600px) {
+  .vf-revolve.no-animate {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Remove card properties from feedback form */
+.vf-contact-form.feedback-no-card {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
 

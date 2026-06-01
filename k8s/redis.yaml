@@ -14,15 +14,15 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis/redis-stack-server:7.2.0-v8
           ports:
             - containerPort: 6379
           resources:
             limits:
-              memory: "128Mi"
+              memory: "256Mi"
               cpu: "250m"
             requests:
-              memory: "64Mi"
+              memory: "128Mi"
               cpu: "50m"
           readinessProbe:
             tcpSocket:

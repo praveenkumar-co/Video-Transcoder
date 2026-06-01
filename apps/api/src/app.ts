@@ -5,15 +5,22 @@ import { env } from './env';
 import { connectDB } from './config/db.config';
 import { startSqsPoller, startUploadReconciler } from './services/sqs.service';
 import { startVideoWorker } from './workers/video.worker';
+import cookieParser from 'cookie-parser';
 import uploadRoutes from './routes/upload.routes';
 import processRoutes from './routes/process.routes';
 import contactRoutes from './routes/contact.routes';
+import authRoutes from './routes/auth.routes';
+import profileRoutes from './routes/profile.routes';
+import feedbackRoutes from './routes/feedback.routes';
+import { isAuthenticated } from './middleware/auth.middleware';
 import { globalErrorHandler } from './middleware/error.middleware';
+import { initUsernameBloom, backfillUsernameBloom } from './services/bloom.service';
 import { registry, httpRequestDuration, queueDepth } from './metrics';
 import { videoQueue } from './queues/video.queue';
 
 
 const app = express();
+app.use(cookieParser());
 const corsOrigins = env.CORS_ORIGIN
   ?.split(',')
   .map((origin) => origin.trim())
@@ -87,14 +94,21 @@ app.get('/ready', async (_req, res) => {
   }
 });
 
-app.use('/api/upload', uploadRoutes);
-app.use('/api/process', processRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/upload', isAuthenticated, uploadRoutes);
+app.use('/api/process', isAuthenticated, processRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/profile', profileRoutes); 
 app.use(globalErrorHandler);
 async function bootstrap(): Promise<void> {
   try {
     await connectDB();
     console.info('MongoDB connected');
+
+    // Initialize Bloom Filter and backfill
+    await initUsernameBloom();
+    await backfillUsernameBloom();
 
     app.listen(env.PORT, () => {
       console.info(`API running on http://localhost:${env.PORT}`);

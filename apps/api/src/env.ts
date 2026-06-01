@@ -33,6 +33,10 @@ const EnvSchema = z.object({
   SMTP_PORT: z.coerce.number().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  JWT_SECRET: z.string().default("videoforge-default-secret-key-12345"),
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV !== 'production') {
     return;

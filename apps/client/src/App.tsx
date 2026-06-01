@@ -1,8 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import 'finisher-header';
 import { UploadWidget } from './components/UploadWidget';
 import { VideoPlayer } from './components/VideoPlayer';
 import { AnimatedLogo } from './components/AnimatedLogo';
 import { ContactUs } from './components/ContactUs';
+import { FeedbackUs } from './components/FeedbackUs';
+import { AuthOverlay } from './components/AuthOverlay';
+import { getProfileAPI, signoutAPI, updateProfileAPI, getUserVideosAPI, checkUsernameAPI } from './api/auth.api';
 import {
   listVideos,
   getVideoStatus,
@@ -54,7 +58,8 @@ export type PageView =
   | 'settings'
   | 'pricing'
   | 'profile'
-  | 'contact';
+  | 'contact'
+  | 'feedback';
 
 // Legacy compatibility export used by Dashboard.tsx
 export type TabType = 'dashboard' | 'play' | 'compress' | 'gif' | 'download';
@@ -65,8 +70,10 @@ type ThemeMode = 'midnight' | 'daylight';
 interface ProfileState {
   name: string;
   email: string;
+  username?: string;
   avatarInitials: string;
   avatarUrl?: string;
+  role?: 'free' | 'premium';
   signedIn: boolean;
   theme: ThemeMode;
 }
@@ -97,7 +104,7 @@ const defaultProfile: ProfileState = {
   name: 'VideoForge User',
   email: 'user@example.com',
   avatarInitials: 'VU',
-  signedIn: true,
+  signedIn: false,
   theme: 'daylight',
 };
 
@@ -281,10 +288,11 @@ function App() {
   const [page, setPage] = useState<PageView>('home');
   const [isLeftDrawerOpen, setIsLeftDrawerOpen] = useState(false);
   const [isToolsDropdownOpen, setIsToolsDropdownOpen] = useState(false);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isResourcesDropdownOpen, setIsResourcesDropdownOpen] = useState(false);
-  const [settingsActiveTab, setSettingsActiveTab] = useState<'general' | 'appearance' | 'storage' | 'billing' | 'api' | 'security' | 'integrations'>('general');
+  const [settingsActiveTab, setSettingsActiveTab] = useState<'general' | 'videos' | 'appearance' | 'storage' | 'billing' | 'api' | 'security' | 'integrations'>('general');
   const [revolverActiveIndex, setRevolverActiveIndex] = useState(0);
 
   const [allVideos, setAllVideos] = useState<VideoMetaData[]>([]);
@@ -302,8 +310,18 @@ function App() {
 
   const [profile, setProfile] = useState<ProfileState>(() => {
     const s = localStorage.getItem('videoforge-profile');
-    return s ? { ...defaultProfile, ...JSON.parse(s) } : defaultProfile;
+    const parsed = s ? JSON.parse(s) : {};
+    return { ...defaultProfile, ...parsed, theme: 'daylight' };
   });
+
+  // ─── Settings CRUD & Username validation state ──────────────────────────────
+  const [settingsName, setSettingsName] = useState('');
+  const [settingsUsername, setSettingsUsername] = useState('');
+  const [settingsUsernameAvailable, setSettingsUsernameAvailable] = useState<boolean | null | 'checking'>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [userVideos, setUserVideos] = useState<VideoMetaData[]>([]);
+  const [loadingUserVideos, setLoadingUserVideos] = useState(false);
+
 
   // ─── Data fetching ──────────────────────────────────────────────────────────
   const loadVideos = async () => {
@@ -311,15 +329,146 @@ function App() {
   };
 
   useEffect(() => {
-    document.documentElement.dataset.theme = profile.theme;
-    localStorage.setItem('videoforge-profile', JSON.stringify(profile));
+    document.documentElement.dataset.theme = 'daylight';
+    localStorage.setItem('videoforge-profile', JSON.stringify({ ...profile, theme: 'daylight' }));
   }, [profile]);
 
   useEffect(() => {
+
+    // Remove existing canvases from any finisher containers we manage
+    const selectors = ['.finisher-header', '.finisher-header-top'];
+    selectors.forEach(sel => {
+      const el = document.querySelector(sel);
+      if (el) {
+        const existingCanvases = el.querySelectorAll('canvas');
+        existingCanvases.forEach(c => c.remove());
+      }
+    });
+
+    const config = {
+      "count": 6,
+      "size": { "min": 1100, "max": 1300, "pulse": 0 },
+      "speed": { "x": { "min": 0.1, "max": 0.3 }, "y": { "min": 0.1, "max": 0.3 } },
+      "colors": { "background": "#9138e5", "particles": ["#6bd6ff", "#ffcb57", "#ff333d"] },
+      "blending": "overlay",
+      "opacity": { "center": 1, "edge": 0.1 },
+      "skew": -2,
+      "shapes": ["c"]
+    };
+
+    try {
+      // @ts-ignore
+      if (typeof (window as any).FinisherHeader !== 'undefined') {
+        try { // header (for other subpages with smaller top headers)
+          // @ts-ignore
+          new (window as any).FinisherHeader({ ...config, className: 'finisher-header-top' });
+        } catch (e) { /* ignore if that container doesn't exist */ }
+
+        try { // unified header + hero container (for home page)
+          // @ts-ignore
+          new (window as any).FinisherHeader({ ...config, className: 'finisher-header' });
+        } catch (e) { /* ignore if that container doesn't exist */ }
+      }
+    } catch (err) {
+      console.error("FinisherHeader initialization error:", err);
+    }
+  }, [page]);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await getProfileAPI();
+        const user = response.user;
+        const displayName = user.username || user.name;
+        setProfile(prev => ({
+          ...prev,
+          name: user.name,
+          email: user.email,
+          username: user.username,
+          avatarInitials: getInitials(displayName),
+          // Only replace the stored avatar if the backend actually returned one;
+          // otherwise keep whatever was loaded from localStorage so it survives reloads.
+          avatarUrl: user.avatarUrl || prev.avatarUrl,
+          role: user.role,
+          signedIn: true,
+          theme: 'daylight'
+        }));
+      } catch (err) {
+        console.log("No active authentication session found:", err);
+        setProfile(prev => ({ ...prev, signedIn: false }));
+      }
+    };
+    checkAuth();
+  }, []);
+
+  // ─── General Settings fields sync ──────────────────────────────────────────
+  useEffect(() => {
+    if (page === 'settings') {
+      setSettingsName(profile.name || '');
+      setSettingsUsername(profile.username || '');
+      setSettingsUsernameAvailable(null);
+    }
+  }, [page, profile.name, profile.username]);
+
+  // ─── Real-time debounced username validation ───────────────────────────────
+  useEffect(() => {
+    if (!settingsUsername) {
+      setSettingsUsernameAvailable(null);
+      return;
+    }
+    
+    const cleaned = settingsUsername.trim().toLowerCase();
+    
+    // If it matches their existing username, it is available (no check needed)
+    if (cleaned === (profile.username || '').toLowerCase()) {
+      setSettingsUsernameAvailable(null);
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]{3,15}$/.test(cleaned)) {
+      setSettingsUsernameAvailable(false);
+      return;
+    }
+
+    setSettingsUsernameAvailable('checking');
+    
+    const debounceId = setTimeout(async () => {
+      try {
+        const available = await checkUsernameAPI(cleaned);
+        setSettingsUsernameAvailable(available);
+      } catch (err) {
+        setSettingsUsernameAvailable(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(debounceId);
+  }, [settingsUsername, profile.username]);
+
+  // ─── Fetch user secure videos in Settings ──────────────────────────────────
+  useEffect(() => {
+    if (page === 'settings' && settingsActiveTab === 'videos') {
+      const fetchUserVideos = async () => {
+        setLoadingUserVideos(true);
+        try {
+          const videos = await getUserVideosAPI();
+          setUserVideos(videos);
+        } catch (err) {
+          console.error("Failed to load user videos:", err);
+        } finally {
+          setLoadingUserVideos(false);
+        }
+      };
+      fetchUserVideos();
+    }
+  }, [page, settingsActiveTab]);
+
+
+  useEffect(() => {
+    if (!profile.signedIn) return;
     loadVideos();
     const id = setInterval(loadVideos, 6000);
     return () => clearInterval(id);
-  }, []);
+  }, [profile.signedIn]);
 
   useEffect(() => {
     if (!selectedVideo || ['completed', 'failed'].includes(selectedVideo.status)) return;
@@ -600,13 +749,101 @@ function App() {
     showStatus('Signed in.', 'success');
   };
 
-  const handleProfileImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSignOut = async () => {
+    try {
+      await signoutAPI();
+    } catch (e) {
+      console.error("Signout API error:", e);
+    }
+    setProfile(defaultProfile);
+    setIsProfileOpen(false);
+    setIsLeftDrawerOpen(false);
+    showStatus('Signed out successfully!', 'success');
+  };
+
+  const handleProfileImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setProfile({ ...profile, avatarUrl: String(reader.result) });
-    reader.readAsDataURL(file);
+    // Reset input so the same file can be re-selected if needed
+    e.target.value = '';
+
+    // Resize + compress the image in a canvas before converting to base64.
+    // This keeps the payload small enough for the backend body limit and localStorage.
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = async () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX = 300; // max dimension in px
+      let { width, height } = img;
+      if (width > height) {
+        if (width > MAX) { height = Math.round((height * MAX) / width); width = MAX; }
+      } else {
+        if (height > MAX) { width = Math.round((width * MAX) / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      const base64 = canvas.toDataURL('image/jpeg', 0.7);
+
+      // Apply locally right away so the UI feels instant
+      setProfile(prev => ({ ...prev, avatarUrl: base64 }));
+
+      // Persist to backend
+      try {
+        const res = await updateProfileAPI({ avatarUrl: base64 });
+        if (res.user && res.user.avatarUrl) {
+          setProfile(prev => ({ ...prev, avatarUrl: res.user.avatarUrl }));
+        }
+        showStatus('Avatar updated successfully!', 'success');
+      } catch (err: any) {
+        // Backend sync failed but local avatar is already set & saved to localStorage
+        showStatus('Avatar saved locally (sync failed)', 'error');
+      }
+    };
+    img.src = objectUrl;
+  }, []);
+
+  const handleSaveProfile = async () => {
+    setSettingsSaving(true);
+    try {
+      const cleanUsername = settingsUsername.trim().toLowerCase();
+      
+      // Validation if changed
+      if (cleanUsername && cleanUsername !== (profile.username || '')) {
+        if (!/^[a-zA-Z0-9_]{3,15}$/.test(cleanUsername)) {
+          throw new Error('Username must be 3-15 alphanumeric characters or underscores');
+        }
+        if (settingsUsernameAvailable === false) {
+          throw new Error('Username is already taken');
+        }
+      }
+
+      const response = await updateProfileAPI({
+        name: settingsName.trim() || undefined,
+        username: cleanUsername || undefined,
+      });
+
+      const updatedUser = response.user;
+      const displayName = updatedUser.username || updatedUser.name;
+      
+      setProfile(prev => ({
+        ...prev,
+        name: updatedUser.name,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        avatarUrl: updatedUser.avatarUrl,
+        avatarInitials: getInitials(displayName),
+      }));
+
+      showStatus('Profile updated successfully!', 'success');
+    } catch (err: any) {
+      showStatus(err.message || 'Failed to update profile', 'error');
+    } finally {
+      setSettingsSaving(false);
+    }
   };
+
 
   const renderSelectedSource = (emptyText = 'Go to My Videos and select a source first.') => (
     <div className="selected-source-box">
@@ -913,10 +1150,15 @@ function App() {
   if (page === 'pricing') {
     return (
       <div className="app-shell droplane-bg">
-        <header className="home-header">
+        <header className="home-header finisher-header-top">
           <button className="header-logo" onClick={goHome}>
-            <span className="logo-spark"><Zap size={18} /></span>
-            <span>VideoForge</span>
+            <span className="logo-text-animated wave-text">
+              {'VideoForge'.split('').map((c, i) => (
+                <span key={i} style={{ animationDelay: `${i * 0.15}s` }}>
+                  {c}
+                </span>
+              ))}
+            </span>
           </button>
           <div className="header-actions">
             <button className="btn-signin" onClick={goHome}>Back to Console</button>
@@ -986,7 +1228,7 @@ function App() {
     
     const sidebarTabs = [
       { key: 'general' as const, label: 'General', icon: SlidersHorizontal, desc: 'Manage display details' },
-      { key: 'appearance' as const, label: 'Appearance', icon: Palette, desc: 'Themes and views' },
+      { key: 'videos' as const, label: 'My Videos', icon: FileVideo, desc: 'Your secure videos' },
       { key: 'storage' as const, label: 'Storage & Cache', icon: FolderDown, desc: 'Local caches & S3' },
       { key: 'billing' as const, label: 'Billing & Plans', icon: ShieldCheck, desc: 'Subscription details' },
       { key: 'api' as const, label: 'API Credentials', icon: Zap, desc: 'Tokens & webhooks' },
@@ -1046,8 +1288,8 @@ function App() {
                       <span>Display Name</span>
                       <input 
                         className="text-input" 
-                        value={profile.name} 
-                        onChange={e => setProfile({ ...profile, name: e.target.value, avatarInitials: getInitials(e.target.value) })} 
+                        value={settingsName} 
+                        onChange={e => setSettingsName(e.target.value)} 
                       />
                     </label>
                     <label className="input-group">
@@ -1055,9 +1297,108 @@ function App() {
                       <input className="text-input" value={profile.email || ''} disabled style={{ opacity: 0.6, cursor: 'not-allowed' }} />
                     </label>
                     <label className="input-group">
+                      <span>Username</span>
+                      <input 
+                        className="text-input" 
+                        value={settingsUsername} 
+                        placeholder="Choose a unique username"
+                        onChange={e => setSettingsUsername(e.target.value)} 
+                      />
+                      {settingsUsername.trim().toLowerCase() !== (profile.username || '') && (
+                        <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 500 }}>
+                          {settingsUsernameAvailable === 'checking' && (
+                            <span style={{ color: 'var(--warning-color)' }}>Checking username availability...</span>
+                          )}
+                          {settingsUsernameAvailable === true && (
+                            <span style={{ color: 'var(--success-color)' }}>✓ Username is available!</span>
+                          )}
+                          {settingsUsernameAvailable === false && (
+                            <span style={{ color: 'var(--danger-color)' }}>✗ Username is taken or invalid (3-15 chars, letters/numbers/_)</span>
+                          )}
+                        </div>
+                      )}
+                    </label>
+                    <label className="input-group">
                       <span>Profile Image</span>
                       <input className="text-input file-input" type="file" accept="image/*" onChange={handleProfileImageUpload} />
                     </label>
+
+                    <button 
+                      className="btn btn-primary" 
+                      onClick={handleSaveProfile} 
+                      disabled={settingsSaving || (settingsUsername.trim().toLowerCase() !== (profile.username || '') && (settingsUsernameAvailable === 'checking' || settingsUsernameAvailable === false))}
+                      style={{ marginTop: '1.5rem', width: 'fit-content', padding: '10px 24px', background: 'var(--accent-color)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      {settingsSaving ? 'Saving...' : 'Save Profile Settings'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {settingsActiveTab === 'videos' && (
+                <div className="settings-tab-panel animate-slide-up">
+                  <div className="form-head">
+                    <h3>My Processed Videos</h3>
+                    <p>All transcode and download assets linked exclusively to your account.</p>
+                  </div>
+                  <div className="settings-fields-card" style={{ background: 'transparent', border: 'none', padding: 0 }}>
+                    {loadingUserVideos ? (
+                      <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-secondary)' }}>
+                        <RefreshCw className="pulse-anim" style={{ margin: '0 auto 12px' }} />
+                        <span>Fetching secure assets...</span>
+                      </div>
+                    ) : userVideos.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '4rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed rgba(255,255,255,0.08)' }}>
+                        <FileVideo size={48} style={{ color: 'var(--text-secondary)', marginBottom: '16px', opacity: 0.6 }} />
+                        <h4 style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>No Private Videos Found</h4>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Start transcoding or downloading to build your secure library.</p>
+                      </div>
+                    ) : (
+                      <div className="video-library-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px', display: 'grid' }}>
+                        {userVideos.map(v => (
+                          <div 
+                            key={v.videoId} 
+                            className={`video-card ${selectedVideo?.videoId === v.videoId ? 'active' : ''}`}
+                            onClick={() => { setSelectedVideo(v); goHome(); }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div className="video-card-preview-container">
+                              {(v.outputUrl || v.masterPlaylistUrl) ? (
+                                <video 
+                                  src={v.outputUrl || v.masterPlaylistUrl} 
+                                  className="video-card-player" 
+                                  muted 
+                                  playsInline 
+                                  preload="metadata" 
+                                  onMouseOver={e => (e.target as HTMLVideoElement).play()} 
+                                  onMouseOut={e => (e.target as HTMLVideoElement).pause()} 
+                                />
+                              ) : (
+                                <div className="video-card-placeholder-icon">
+                                  <FileVideo size={36} className="placeholder-svg" />
+                                </div>
+                              )}
+                              <div className="video-card-overlay">
+                                <PlayCircle size={32} className="play-icon" />
+                              </div>
+                              {v.status && (
+                                <span className={`video-card-status-badge ${v.status}`}>
+                                  {v.status === 'completed' ? 'Ready' : v.status === 'failed' ? 'Error' : 'Processing'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="video-meta">
+                              <strong className="video-title" style={{ fontSize: '13px' }} title={displayVideoName(v)}>{displayVideoName(v)}</strong>
+                              <div className="video-specs" style={{ fontSize: '11px' }}>
+                                <span>{v.status === 'completed' ? '1080p' : '---'}</span>
+                                <span className="dot">•</span>
+                                <span>{formatBytes(v.sizeBytes)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1213,10 +1554,7 @@ function App() {
                   <span>{profile.email || 'Not signed in'}</span>
                 </div>
               </div>
-              <div className="session-card">
-                <span>Session Status: Active</span>
-                <code>Role: Administrator</code>
-              </div>
+
               <button className="btn-trigger" style={{ background: '#ef4444' }} onClick={() => { setProfile(defaultProfile); goHome(); }}>
                 <LogOut size={16} /> Sign Out
               </button>
@@ -1303,21 +1641,22 @@ function App() {
 
   // ─── HOME PAGE ───────────────────────────────────────────────────────────────
   return (
-    <div className="app-shell droplane-bg">
+    <>
+      <div className={`app-shell droplane-bg ${!profile.signedIn ? 'vf-main-shell-blur' : ''}`}>
 
-      {/* HEADER */}
-      <header className="home-header">
-        <div className="header-brand-wrap" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button className="header-logo" onClick={goHome} aria-label="VideoForge home">
-            <span className="logo-spark"><Zap size={30} /></span>
-            <span className="logo-text-animated">
-              {'VideoForge'.split('').map((c, i) => (
-                <span key={i} className="vf-logo-char">
-                  {c}
-                </span>
-              ))}
-            </span>
-          </button>
+      <div className="colorful-hero-wrap finisher-header">
+        {/* HEADER */}
+        <header className="home-header">
+          <div className="header-brand-wrap" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button className="header-logo" onClick={goHome} aria-label="VideoForge home">
+              <span className="logo-text-animated wave-text">
+                {'VideoForge'.split('').map((c, i) => (
+                  <span key={i} style={{ animationDelay: `${i * 0.2}s` }}>
+                    {c}
+                  </span>
+                ))}
+              </span>
+            </button>
           <button 
             className={`sidebar-menu-trigger-btn header-trigger-btn ${isLeftDrawerOpen ? 'active' : ''}`}
             onClick={() => setIsLeftDrawerOpen(!isLeftDrawerOpen)}
@@ -1336,7 +1675,7 @@ function App() {
           {/* Tools Mega Dropdown */}
           <div className="dropdown-wrapper">
             <button
-              className={`link-item cinzel-font ${isToolsDropdownOpen ? 'active' : ''}`}
+              className={`blob-btn link-item cinzel-font ${isToolsDropdownOpen ? 'active' : ''}`}
               onClick={() => {
                 setIsToolsDropdownOpen(!isToolsDropdownOpen);
                 setIsResourcesDropdownOpen(false);
@@ -1382,7 +1721,7 @@ function App() {
           {/* Resources Dropdown */}
           <div className="dropdown-wrapper">
             <button
-              className={`link-item cinzel-font ${isResourcesDropdownOpen ? 'active' : ''}`}
+              className={`blob-btn link-item cinzel-font ${isResourcesDropdownOpen ? 'active' : ''}`}
               onClick={() => {
                 setIsResourcesDropdownOpen(!isResourcesDropdownOpen);
                 setIsToolsDropdownOpen(false);
@@ -1414,25 +1753,36 @@ function App() {
             )}
           </div>
 
-          <button className="link-item cinzel-font" onClick={() => goTo('pricing')}>
+          <button className="blob-btn link-item cinzel-font" onClick={() => goTo('pricing')}>
             Pricing
           </button>
         </nav>
 
         <div className="header-actions">
-          <button className="button button-item" onClick={() => goTo('trial')}>
-            <span className="button-bg">
-              <span className="button-bg-layers">
-                <span className="button-bg-layer button-bg-layer-1 -purple"></span>
-                <span className="button-bg-layer button-bg-layer-2 -turquoise"></span>
-                <span className="button-bg-layer button-bg-layer-3 -yellow"></span>
-              </span>
-            </span>
-            <span className="button-inner">
-              <span className="button-inner-static">Start Free Trial</span>
-              <span className="button-inner-hover">Start Free Trial</span>
-            </span>
-          </button>
+          <div className="header-profile-btn" style={{ cursor: 'default' }}>
+            {/* Hidden file input driven by ref — avoids label-click bubbling that unmounts the page */}
+            <input
+              ref={avatarFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleProfileImageUpload}
+              style={{ display: 'none' }}
+            />
+            <div
+              className="header-profile-avatar"
+              style={{ cursor: 'pointer', position: 'relative' }}
+              title="Upload profile picture"
+              role="button"
+              tabIndex={0}
+              onClick={e => { e.stopPropagation(); avatarFileInputRef.current?.click(); }}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); avatarFileInputRef.current?.click(); } }}
+            >
+              {profile.avatarUrl ? <img src={profile.avatarUrl} alt="Avatar" /> : <span>{profile.avatarInitials}</span>}
+            </div>
+            <button className="header-profile-name-btn" onClick={() => goTo('settings')} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', outline: 'none', boxShadow: 'none' }}>
+              <span className="header-profile-name">{profile.name}</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1443,11 +1793,7 @@ function App() {
 
       {/* SIDEBAR DRAWER — slides in from left */}
       <aside className={`left-side-drawer-panel ${isLeftDrawerOpen ? 'open' : ''}`}>
-        <div className="drawer-header">
-          <div className="header-brand">
-            <span className="logo-spark"><Zap size={16} /></span>
-            <strong>VideoForge Console</strong>
-          </div>
+        <div className="drawer-header" style={{ justifyContent: 'flex-end', borderBottom: 'none', marginBottom: '12px' }}>
           <button className="btn-close-drawer" onClick={() => setIsLeftDrawerOpen(false)}>
             <X size={18} />
           </button>
@@ -1490,12 +1836,10 @@ function App() {
             </button>
             <button className="duic-btn" onClick={() => {
               if (profile.signedIn) {
-                setProfile(defaultProfile);
-                alert('Signed out successfully!');
+                handleSignOut();
               } else {
                 setIsAuthOpen(true);
               }
-              setIsLeftDrawerOpen(false);
             }}>
               <LogOut size={13} /> {profile.signedIn ? 'Sign Out' : 'Sign In'}
             </button>
@@ -1503,17 +1847,20 @@ function App() {
         </div>
       </aside>
 
-      {/* MAIN HOME */}
-      <main>
+        {/* HERO SECTION */}
         <section className="hero-section">
           <div className="hero-copy">
-            <span className="hero-eyebrow"><ShieldCheck size={15} /> Video Research Tool</span>
             <div className="masking-container">
               <h1 className="masked-text vf-heading">
-                Process your next winning video in seconds
+                Process your next<br />winning video in seconds
               </h1>
             </div>
-            <p>Upload, compress, trim, convert, extract audio, and keep every finished asset inside your private VideoForge library.</p>
+            <p>
+              Upload, compress, trim, convert, extract audio, and
+              <span className="slanted-right-text">
+                keep every finished asset inside your private VideoForge library.
+              </span>
+            </p>
             <div className="hero-cta-group" style={{ zIndex: 12 }}>
               <button className="button button-item" onClick={() => goTo('trial')}>
                 <span className="button-bg">
@@ -1531,7 +1878,10 @@ function App() {
             </div>
           </div>
         </section>
+      </div>
 
+      {/* MAIN HOME */}
+      <main>
         <section className="platform-section">
           <h2>VideoForge products</h2>
           <p className="section-copy">Every tool you need to cover video uploads, compression, audio extraction, clipping, and delivery in one account.</p>
@@ -1556,7 +1906,7 @@ function App() {
       </main>
 
       {/* FOOTER */}
-      <footer className="vf-footer">
+      <footer className="vf-footer finisher-header-footer">
         {/* Background Glow */}
         <div className="vf-footer-bg"></div>
 
@@ -1565,10 +1915,13 @@ function App() {
           {/* Left */}
           <div className="vf-footer-brand">
             <div className="vf-logo" onClick={goHome} style={{ cursor: 'pointer' }}>
-              <div className="vf-logo-icon">
-                <Zap size={24} fill="currentColor" />
-              </div>
-              <span>VideoForge</span>
+              <span className="logo-text-animated wave-text" style={{ fontSize: '26px' }}>
+                {'VideoForge'.split('').map((c, i) => (
+                  <span key={i} style={{ animationDelay: `${i * 0.2}s` }}>
+                    {c}
+                  </span>
+                ))}
+              </span>
             </div>
             <p>
               Enterprise-grade video transcoding infrastructure
@@ -1580,7 +1933,7 @@ function App() {
           <div className="vf-footer-links">
             <div className="vf-column">
               <h4>PRODUCT</h4>
-              <button onClick={goHome}>Features</button>
+              <button onClick={() => setIsLeftDrawerOpen(true)}>Features</button>
               <button onClick={() => goTo('pricing')}>Pricing</button>
               <button onClick={() => { goTo('settings'); setSettingsActiveTab('api'); }}>API</button>
             </div>
@@ -1595,8 +1948,8 @@ function App() {
             <div className="vf-column">
               <h4>COMPANY</h4>
               <button onClick={goHome}>About</button>
-              <button onClick={goHome}>Careers</button>
               <button onClick={() => goTo('contact')}>Contact</button>
+              <button onClick={() => goTo('feedback')}>Feedback</button>
             </div>
 
             <div className="vf-column">
@@ -1619,6 +1972,16 @@ function App() {
                 <path d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z" />
               </svg>
             </button>
+            <button className="animated-button feedback-btn" onClick={() => goTo('feedback')}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="arr-2" viewBox="0 0 24 24">
+                <path d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z" />
+              </svg>
+              <span className="text">Feedback</span>
+              <span className="circle"></span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="arr-1" viewBox="0 0 24 24">
+                <path d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -1629,11 +1992,11 @@ function App() {
             <span>Powering the future of video.</span>
           </div>
 
-          <div className="vf-socials">
-            <a href="#">𝕏</a>
-            <a href="#">◎</a>
-            <a href="#">◉</a>
-            <a href="#">in</a>
+          <div className="vf-socials" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <a href="https://www.linkedin.com/in/praveen/" target="_blank" rel="noreferrer" title="Twitter / X">𝕏</a>
+            <a href="https://www.linkedin.com/in/praveen/" target="_blank" rel="noreferrer" title="LinkedIn">in</a>
+            <a href="https://www.linkedin.com/in/praveen/" target="_blank" rel="noreferrer" title="Facebook">f</a>
+            <a href="https://github.com/praveenkumar-co" target="_blank" rel="noreferrer" title="GitHub">git</a>
           </div>
         </div>
       </footer>
@@ -1669,16 +2032,52 @@ function App() {
           </div>
           <button onClick={() => { goTo('library'); setIsProfileOpen(false); }}><FileVideo size={16} /> My Videos</button>
           <button onClick={() => { goTo('settings'); setIsProfileOpen(false); }}><Palette size={16} /> Profile Settings</button>
-          <button onClick={() => { setProfile(defaultProfile); setIsProfileOpen(false); }}><LogOut size={16} /> Sign Out</button>
+          <button onClick={handleSignOut}><LogOut size={16} /> Sign Out</button>
         </div>
       )}
 
       {/* CONTACT MODAL OVERLAY */}
       {page === 'contact' && (
-        <ContactUs onClose={goHome} />
+        <ContactUs onClose={() => setPage('home')} />
       )}
+
+      {/* FEEDBACK MODAL OVERLAY */}
+      {page === 'feedback' && (
+        <FeedbackUs onClose={() => setPage('home')} profile={profile} />
+      )}
+
+      {/* SVG gooey filter for header blob-buttons */}
+      <svg xmlns="http://www.w3.org/2000/svg" version="1.1" style={{ display: 'none' }}>
+        <defs>
+          <filter id="goo">
+            <feGaussianBlur in="SourceGraphic" result="blur" stdDeviation="10" />
+            <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 21 -7" result="goo" />
+            <feBlend in2="goo" in="SourceGraphic" result="mix" />
+          </filter>
+        </defs>
+      </svg>
     </div>
-  );
+
+    {!profile.signedIn && (
+      <AuthOverlay
+        onAuthSuccess={(user) => {
+          const displayName = user.username || user.name;
+          setProfile({
+            name: user.name || displayName,
+            email: user.email,
+            username: user.username,
+            avatarInitials: getInitials(displayName),
+            avatarUrl: user.avatarUrl || '',
+            role: user.role || 'free',
+            signedIn: true,
+            theme: 'daylight'
+          });
+          loadVideos();
+        }}
+      />
+    )}
+  </>
+);
 }
 
 export default App;

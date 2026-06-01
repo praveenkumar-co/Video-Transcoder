@@ -1,8 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:14000';
-
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -12,15 +10,15 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: apiProxyTarget,
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://videoforge.local',
         changeOrigin: true,
       },
       '/health': {
-        target: apiProxyTarget,
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://videoforge.local',
         changeOrigin: true,
       },
       '/metrics': {
-        target: apiProxyTarget,
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://videoforge.local',
         changeOrigin: true,
       },
     },

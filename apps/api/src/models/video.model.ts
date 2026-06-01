@@ -3,12 +3,18 @@ import { VideoStatus, VideoMetaData } from '../types/index';
 
 export interface VideoDocument extends VideoMetaData {
   _id: string;
+  userId?: string;
 }
 
 const VideoSchema = new Schema<VideoDocument>(
   {
     _id: {
       type: String, 
+    },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
     },
     videoId: {
       type: String,

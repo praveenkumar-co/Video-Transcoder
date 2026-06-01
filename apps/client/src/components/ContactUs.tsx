@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Zap } from 'lucide-react';
 import { submitContactQuery } from '../api/contact.api';
-import './contact.css';
+import '../style/contact.css';
 
 interface ContactUsProps {
   onClose: () => void;
@@ -62,15 +62,11 @@ export function ContactUs({ onClose }: ContactUsProps) {
         <div className="vf-contact-left">
           {/* BRAND */}
           <div className="vf-contact-brand" onClick={onClose} style={{ cursor: 'pointer' }}>
-            <div className="vf-contact-logo">
-              <Zap size={22} fill="currentColor" />
-            </div>
             <h2>VideoForge</h2>
           </div>
 
           {/* TEXT */}
           <div className="vf-contact-copy">
-            <h1>Contact Us</h1>
             <p>
               Enterprise-grade video transcoding infrastructure
               built for transcoding, AI subtitles,
@@ -163,7 +159,7 @@ export function ContactUs({ onClose }: ContactUsProps) {
             </div>
           ) : (
             <form className="vf-contact-form" onSubmit={handleSubmit}>
-              <h2>Get in Touch</h2>
+              <h2 className="form-breathe-heading">Contact Us</h2>
               <p>You can reach us anytime</p>
 
               {error && <div className="vf-error-message">{error}</div>}

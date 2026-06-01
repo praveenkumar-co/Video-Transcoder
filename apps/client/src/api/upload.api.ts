@@ -1,12 +1,13 @@
 import { PresignedUrlResponse } from '../types';
 import { API_BASE } from './config';
+import { getAuthHeaders } from './auth.api';
 
 export async function requestPresignedUrl(
   file: File
 ): Promise<PresignedUrlResponse> {
   const res = await fetch(`${API_BASE}/api/upload/presigned-url`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders('application/json'),
     body: JSON.stringify({
       fileName: file.name,
       mimeType: file.type,
@@ -56,7 +57,9 @@ export async function uploadToS3(
 }
 
 export async function getVideoStatus(videoId: string): Promise<import('../types').VideoMetaData> {
-  const res = await fetch(`${API_BASE}/api/upload/videos/${videoId}`);
+  const res = await fetch(`${API_BASE}/api/upload/videos/${videoId}`, {
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
@@ -66,7 +69,9 @@ export async function getVideoStatus(videoId: string): Promise<import('../types'
 }
 
 export async function listVideos(): Promise<import('../types').VideoMetaData[]> {
-  const res = await fetch(`${API_BASE}/api/upload/videos`);
+  const res = await fetch(`${API_BASE}/api/upload/videos`, {
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
@@ -78,7 +83,7 @@ export async function listVideos(): Promise<import('../types').VideoMetaData[]> 
 export async function triggerTranscode(videoId: string, resolution?: string): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/transcode`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders('application/json'),
     body: JSON.stringify({ videoId, resolution }),
   });
   const body = await res.json();
@@ -89,7 +94,7 @@ export async function triggerTranscode(videoId: string, resolution?: string): Pr
 export async function triggerCompress(videoId: string, targetSizeMB: number): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/compress`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders('application/json'),
     body: JSON.stringify({ videoId, targetSizeMB }),
   });
   const body = await res.json();
@@ -100,7 +105,7 @@ export async function triggerCompress(videoId: string, targetSizeMB: number): Pr
 export async function triggerConvert(videoId: string, outputFormat: string): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/convert`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders('application/json'),
     body: JSON.stringify({ videoId, outputFormat }),
   });
   const body = await res.json();
@@ -111,7 +116,7 @@ export async function triggerConvert(videoId: string, outputFormat: string): Pro
 export async function triggerExtractAudio(videoId: string, audioFormat: string): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/extract-audio`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders('application/json'),
     body: JSON.stringify({ videoId, audioFormat }),
   });
   const body = await res.json();
@@ -122,7 +127,7 @@ export async function triggerExtractAudio(videoId: string, audioFormat: string):
 export async function triggerTrim(videoId: string, startTime: number, endTime: number): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/trim`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders('application/json'),
     body: JSON.stringify({ videoId, startTime, endTime }),
   });
   const body = await res.json();
@@ -133,7 +138,7 @@ export async function triggerTrim(videoId: string, startTime: number, endTime: n
 export async function triggerDownloadUrl(sourceUrl: string): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/download-url`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders('application/json'),
     body: JSON.stringify({ sourceUrl }),
   });
   const body = await res.json();
