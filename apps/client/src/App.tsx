@@ -44,6 +44,19 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import apiIconUrl from './icons/api.svg?url';
+import audioIconUrl from './icons/audio-svgrepo-com.svg?url';
+import cdnIconUrl from './icons/cdn.svg?url';
+import compressIconUrl from './icons/compress-svgrepo-com.svg?url';
+import conversionIconUrl from './icons/conversion-svgrepo-com.svg?url';
+import hlsIconUrl from './icons/Hls-Fill--Streamline-Rounded-Fill-Streamline-Material.png?url';
+import mediaPipelineIconUrl from './icons/data-pipeline.svg?url';
+import reviewIconUrl from './icons/review.svg?url';
+import subtitlesIconUrl from './icons/player-subtitle-svgrepo-com.svg?url';
+import trimIconUrl from './icons/trim-svgrepo-com.svg?url';
+import videoAnalyticsIconUrl from './icons/video-player-streaming-svgrepo-com.svg?url';
+import videoEditorIconUrl from './icons/Video-Edit-Cut--Streamline-Ultimate.svg?url';
+import videoSummariesIconUrl from './icons/Video-Player-Movie-2--Streamline-Ultimate.svg?url';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export type PageView =
@@ -108,11 +121,65 @@ const defaultProfile: ProfileState = {
   theme: 'daylight',
 };
 
+const marqueeApps = [
+  { label: 'Compress',  imageSrc: compressIconUrl },
+  { label: 'Trim', imageSrc: trimIconUrl },
+  { label: 'Convert',  imageSrc: conversionIconUrl },
+  { label: 'Audio', imageSrc: audioIconUrl },
+  { label: 'HLS Streaming', imageSrc: hlsIconUrl },
+  { label: 'Multi-Bitrate Encoding', imageSrc: videoEditorIconUrl },
+  { label: 'Auto Subtitles', imageSrc: subtitlesIconUrl },
+  { label: 'Video Summaries',  imageSrc: videoSummariesIconUrl },
+  { label: 'Smart Cropping',  imageSrc: videoEditorIconUrl },
+  { label: 'Video Analytics',  imageSrc: videoAnalyticsIconUrl },
+  { label: 'CDN Delivery',  imageSrc: cdnIconUrl },
+  { label: 'Developer API', imageSrc: apiIconUrl },
+  { label: 'Media Pipelines', imageSrc: mediaPipelineIconUrl },
+  { label: 'Content Moderation',  imageSrc: reviewIconUrl },
+];
+
+function createDefaultServiceImageSrc(color: string) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+      <rect width="72" height="72" rx="18" fill="${color}"/>
+      <circle cx="53" cy="18" r="14" fill="rgba(255,255,255,0.2)"/>
+      <circle cx="18" cy="54" r="16" fill="rgba(0,0,0,0.11)"/>
+      <path d="M22 24h28v24H22z" rx="7" fill="rgba(255,255,255,0.2)"/>
+      <path d="M32 29l15 7-15 7V29z" fill="#ffffff"/>
+    </svg>
+  `;
+
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function AppIconMarquee() {
+  const duplicatedApps = [...marqueeApps, ...marqueeApps];
+
+  return (
+    <section className="app-icon-marquee-section" aria-label="VideoForge app tools">
+      <div className="app-icon-marquee-container">
+        <div className="app-icon-marquee-track">
+          {duplicatedApps.map((app, index) => (
+            <div className="app-icon-wrapper" key={`${app.label}-${index}`}>
+              <div className="app-icon-box" style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}>
+                <img
+                  src={app.imageSrc || createDefaultServiceImageSrc('#3b82f6')}
+                  alt={`${app.label} service`}
+                />
+              </div>
+              <span className="app-icon-label">{app.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function getInitials(name: string) {
   return name.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'VF';
 }
 
-// ─── GSAP Dock Component ─────────────────────────────────────────────────────
 declare const gsap: any;
 
 function GsapDock({ onSelectTool }: { onSelectTool: (key: PageView) => void }) {
@@ -127,6 +194,7 @@ function GsapDock({ onSelectTool }: { onSelectTool: (key: PageView) => void }) {
   useEffect(() => {
     const dock = dockRef.current;
     if (!dock || !itemsRef.current.length) return;
+    if (typeof gsap === 'undefined') return;
 
     gsap.set(itemsRef.current, { transformOrigin: '50% 120%', height: 52 });
     gsap.set(dock, { position: 'relative', height: 72 });
@@ -1634,6 +1702,10 @@ function App() {
               </div>
             </div>
           </div>
+
+          <div className="trial-gsap-dock-panel">
+            <GsapDock onSelectTool={goTo} />
+          </div>
         </div>
       </div>
     );
@@ -1879,6 +1951,8 @@ function App() {
           </div>
         </section>
       </div>
+
+      <AppIconMarquee />
 
       {/* MAIN HOME */}
       <main>

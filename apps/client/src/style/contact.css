@@ -1,10 +1,10 @@
-
 .vf-contact-backdrop {
   position: fixed;
   inset: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(255, 107, 0, 0.04); /* Light translucent orange, extremely transparent! */
+  background: rgba(255, 107, 0, 0.04);
+  /* Light translucent orange, extremely transparent! */
   backdrop-filter: blur(12px);
   display: grid;
   place-items: center;
@@ -15,16 +15,20 @@
 
 .vf-contact-page {
   position: relative;
-  max-width: 1100px; /* Reduced from massive width */
+  max-width: 1100px;
+  /* Reduced from massive width */
   width: 100%;
   margin: auto;
   border-radius: 36px;
   overflow: hidden;
-  padding: 40px 50px; /* Shrunk from 70px to be elegant */
+  padding: 40px 50px;
+  /* Shrunk from 70px to be elegant */
   display: flex;
   justify-content: space-between;
-  gap: 40px; /* Shrunk from 80px */
-  background: rgba(255, 255, 255, 0.72); /* Very clean transparent glass background */
+  gap: 40px;
+  /* Shrunk from 80px */
+  background: rgba(255, 255, 255, 0.72);
+  /* Very clean transparent glass background */
   backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.55);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.15);
@@ -108,7 +112,8 @@
 }
 
 .vf-contact-logo svg {
-  animation: logoSparkSpin 2s linear infinite; /* Spinning revolving logo spark at 2s like main header */
+  animation: logoSparkSpin 2s linear infinite;
+  /* Spinning revolving logo spark at 2s like main header */
 }
 
 .vf-contact-brand h2 {
@@ -193,7 +198,7 @@
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 28px;
   padding: 32px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
   text-align: left;
 }
 
@@ -285,6 +290,7 @@
   from {
     transform: rotateX(-10deg) rotateY(0deg);
   }
+
   to {
     transform: rotateX(-10deg) rotateY(360deg);
   }
@@ -303,8 +309,9 @@
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(30px);
   border: 1px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 0 15px 45px rgba(0,0,0,0.06);
-  transform: rotateY(calc(90deg * var(--i))) translateZ(200px); /* Pulled closer together for elegant compact grouping */
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.06);
+  transform: rotateY(calc(90deg * var(--i))) translateZ(200px);
+  /* Pulled closer together for elegant compact grouping */
   transition: 0.5s;
 }
 
@@ -510,9 +517,12 @@
 }
 
 @keyframes scale {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: none;
   }
+
   50% {
     transform: scale3d(1.1, 1.1, 1);
   }
@@ -596,12 +606,25 @@
   animation: vfDotPulse 1.4s infinite ease-in-out both;
 }
 
-.vf-loading-dot:nth-child(1) { animation-delay: -0.32s; }
-.vf-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+.vf-loading-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.vf-loading-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes vfDotPulse {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1.0); }
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1.0);
+  }
 }
 
 /* Star Rating styling */
@@ -618,7 +641,8 @@
   border: none;
   cursor: pointer;
   padding: 6px;
-  color: #cbd5e1; /* Default slate-300 */
+  color: #cbd5e1;
+  /* Default slate-300 */
   transition: transform 0.2s, color 0.2s;
   display: grid;
   place-items: center;
@@ -629,7 +653,8 @@
 }
 
 .vf-star-rating button.active {
-  color: #ffcb57; /* Gold/yellow color */
+  color: #ffcb57;
+  /* Gold/yellow color */
   filter: drop-shadow(0 0 8px rgba(255, 203, 87, 0.7));
 }
 
@@ -691,5 +716,3 @@
   box-shadow: none !important;
   padding: 0 !important;
 }
-
-
