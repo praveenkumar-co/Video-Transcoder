@@ -23,6 +23,7 @@ export interface VideoMetaData{
     status : VideoStatus ;
     masterPlaylistUrl?: string;   
     outputUrl?: string;
+    jobType?: string;
     uploadedAt: Date;
     updatedAt: Date; 
 }

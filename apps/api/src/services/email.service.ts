@@ -1,5 +1,5 @@
-import nodemailer from 'nodemailer';
 import { env } from '../env';
+import mailerTransporter from '../config/mailer.config';
 
 interface SendContactEmailParams {
   firstName: string;
@@ -11,29 +11,6 @@ interface SendContactEmailParams {
 }
 
 export class EmailService {
-  private static transporter: nodemailer.Transporter | null = null;
-
-  private static getTransporter(): nodemailer.Transporter | null {
-    if (this.transporter) {
-      return this.transporter;
-    }
-
-    if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS) {
-      console.log('Initializing SMTP email transporter...');
-      this.transporter = nodemailer.createTransport({
-        host: env.SMTP_HOST,
-        port: env.SMTP_PORT || 587,
-        secure: env.SMTP_PORT === 465, 
-        auth: {
-          user: env.SMTP_USER,
-          pass: env.SMTP_PASS,
-        },
-      });
-      return this.transporter;
-    }
-
-    return null;
-  }
 
   public static async sendContactQuery({
     firstName,
@@ -45,6 +22,7 @@ export class EmailService {
   }: SendContactEmailParams): Promise<boolean> {
     const adminEmail = env.ADMIN_EMAIL;
     const subject = `[VideoForge Get in Touch] Query from ${firstName} ${lastName}`;
+
     const textContent = `
 New Query Received:
 
@@ -103,36 +81,36 @@ ${message}
     `;
 
     const mailOptions = {
-      from: env.SMTP_USER ? `"VideoForge Contact" <${env.SMTP_USER}>` : '"VideoForge Contact" <contact@videoforge.dev>',
+      // "From" must match the authenticated Gmail user to avoid Gmail rejections
+      from: `"VideoForge Contact" <${env.SMTP_USER || 'contact@videoforge.dev'}>`,
       to: adminEmail,
-      replyTo: email, // Extremely important: this directs the Admin's reply to the customer's email!
-      subject: subject,
+      replyTo: email, // Admin reply goes directly back to the customer
+      subject,
       text: textContent,
       html: htmlContent,
     };
 
-    const transporter = this.getTransporter();
-
-    if (transporter) {
+    // Check if SMTP credentials are set (mailerTransporter uses process.env directly)
+    if (env.SMTP_USER && env.SMTP_PASS) {
       try {
-        const info = await transporter.sendMail(mailOptions);
-        console.info(`[EmailService] Contact message sent successfully to ${adminEmail}. MessageId: ${info.messageId}`);
+        const info = await mailerTransporter.sendMail(mailOptions);
+        console.info(`[EmailService] Contact message sent to ${adminEmail}. MessageId: ${info.messageId}`);
         return true;
       } catch (err) {
-        console.error(`[EmailService] Failed to send email via SMTP:`, err);
-        // We return true anyway because the record is saved to the database,
-        // but we want to log the error.
+        console.error('[EmailService] Failed to send email via Gmail SMTP:', err);
+        // Record is already saved to MongoDB — return false but don't throw
         return false;
       }
     } else {
+      // SMTP not configured — log details, still mark submission successful
       console.warn('========================================================================');
-      console.warn('⚠️  [EmailService] SMTP is not configured in environment variables.');
+      console.warn('⚠️  [EmailService] SMTP_USER / SMTP_PASS not set — email delivery disabled.');
       console.warn('Submission saved in MongoDB, email mock details logged below:');
-      console.warn(`FROM:       contact@videoforge.dev`);
+      console.warn(`FROM:       ${env.SMTP_USER || 'contact@videoforge.dev'}`);
       console.warn(`TO:         ${adminEmail}`);
       console.warn(`REPLY-TO:   ${email}`);
       console.warn(`SUBJECT:    ${subject}`);
-      console.warn(`CONTENT:`);
+      console.warn('CONTENT:');
       console.warn(textContent);
       console.warn('========================================================================');
       return true;

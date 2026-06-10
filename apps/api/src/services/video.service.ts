@@ -12,6 +12,7 @@ export async function createVideoRecord(params: {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
+  jobType?: string;
 }): Promise<VideoDocument> {
   const video = new VideoModel({
     _id: params.videoId,
@@ -22,6 +23,7 @@ export async function createVideoRecord(params: {
     mimeType: params.mimeType,
     sizeBytes: params.sizeBytes,
     status: VideoStatus.PENDING,
+    jobType: params.jobType,
   });
   return video.save();
 }
@@ -29,11 +31,15 @@ export async function createVideoRecord(params: {
 export async function updateVideoStatus(
   videoId: string,
   status: VideoStatus,
-  masterPlaylistUrl?: string     
+  masterPlaylistUrl?: string,
+  jobType?: string
 ): Promise<VideoDocument | null> {
   const update: Record<string, unknown> = { status, updatedAt: new Date() };
   if (masterPlaylistUrl) {
     update.masterPlaylistUrl = masterPlaylistUrl;
+  }
+  if (jobType) {
+    update.jobType = jobType;
   }
   return VideoModel.findByIdAndUpdate(
     videoId,
@@ -109,7 +115,12 @@ export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
     status: doc.status,
     masterPlaylistUrl: getPlayableMasterPlaylistUrl(doc),
     outputUrl: doc.outputUrl,
+    jobType: doc.jobType,
     uploadedAt: doc.uploadedAt,
     updatedAt: doc.updatedAt,
   };
+}
+
+export async function deleteVideoRecord(videoId: string): Promise<VideoDocument | null> {
+  return VideoModel.findByIdAndDelete(videoId);
 }

@@ -21,6 +21,7 @@ export interface VideoJob {
   startTime?: number;
   endTime?: number;
   sourceUrl?: string;
+  upscale?: boolean;
 }
 
 export const videoQueue = new Queue<VideoJob>('video-transcode', {

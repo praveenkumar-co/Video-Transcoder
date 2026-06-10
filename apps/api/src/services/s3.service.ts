@@ -2,10 +2,12 @@ import {
   S3Client,
   PutObjectCommand,
   HeadObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { env } from "../env";
+import { Readable } from 'stream';
 
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent as HttpsAgent } from 'https';
@@ -85,4 +87,37 @@ export async function verifyObjectExists(
     console.error(`[S3] Failed to verify s3://${bucket}/${key}:`, err);
     throw err;
   }
+}
+
+export async function generatePresignedDownloadUrl(
+  bucket: string,
+  key: string,
+  fileName: string
+): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ResponseContentDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`,
+  });
+
+  return getSignedUrl(s3Client, command, {
+    expiresIn: 3600, 
+  });
+}
+
+export async function getS3ObjectContent(
+  bucket: string,
+  key: string
+): Promise<string> {
+  const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+  const response = await s3Client.send(command);
+  const stream = response.Body as Readable;
+  return new Promise((resolve, reject) => {
+    let chunks = '';
+    stream.on('data', (chunk) => {
+      chunks += chunk.toString();
+    });
+    stream.on('end', () => resolve(chunks));
+    stream.on('error', reject);
+  });
 }

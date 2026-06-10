@@ -91,11 +91,11 @@ export async function triggerTranscode(videoId: string, resolution?: string): Pr
   return body.data;
 }
 
-export async function triggerCompress(videoId: string, targetSizeMB: number): Promise<any> {
+export async function triggerCompress(videoId: string, targetSizeMB: number, upscale?: boolean): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/compress`, {
     method: 'POST',
     headers: getAuthHeaders('application/json'),
-    body: JSON.stringify({ videoId, targetSizeMB }),
+    body: JSON.stringify({ videoId, targetSizeMB, upscale }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
@@ -145,3 +145,34 @@ export async function triggerDownloadUrl(sourceUrl: string): Promise<any> {
   if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
   return body.data;
 }
+
+export async function deleteVideo(videoId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/upload/videos/${videoId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  }
+}
+
+export async function getVideoDownloadUrlAPI(
+  videoId: string,
+  resolution?: string
+): Promise<string> {
+  let url = `${API_BASE}/api/upload/videos/${videoId}/download-url`;
+  if (resolution) {
+    url += `?resolution=${encodeURIComponent(resolution)}`;
+  }
+  const res = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  }
+  const body = await res.json();
+  return body.data.downloadUrl;
+}
+

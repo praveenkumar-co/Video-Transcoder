@@ -59,6 +59,10 @@ const VideoSchema = new Schema<VideoDocument>(
     outputUrl: {
       type: String,
     },
+    jobType: {
+      type: String,
+      index: true,
+    },
     uploadedAt: {
       type: Date,
       default: Date.now

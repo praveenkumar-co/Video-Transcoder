@@ -3,6 +3,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import { env } from './env';
 import { connectDB } from './config/db.config';
+import { verifyMailer } from './config/mailer.config';
 import { startSqsPoller, startUploadReconciler } from './services/sqs.service';
 import { startVideoWorker } from './workers/video.worker';
 import cookieParser from 'cookie-parser';
@@ -105,6 +106,9 @@ async function bootstrap(): Promise<void> {
   try {
     await connectDB();
     console.info('MongoDB connected');
+
+    // Verify SMTP connection
+    await verifyMailer();
 
     // Initialize Bloom Filter and backfill
     await initUsernameBloom();

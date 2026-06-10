@@ -6,12 +6,19 @@ import { env } from '../env';
 import { VideoStatus } from '../types/index';
 import { v4 as uuidv4 } from 'uuid';
 
+function mapJobTypeToLibraryType(jobType: JobType): string {
+  if (jobType === 'extract-audio') return 'audio';
+  if (jobType === 'download-url') return 'download';
+  return jobType;
+}
+
 async function enqueueProcessJob(
   jobType: JobType,
   payload: Parameters<typeof videoQueue.add>[1]
 ): Promise<void> {
   await videoQueue.add(jobType, payload);
-  await updateVideoStatus(payload.videoId, VideoStatus.QUEUED);
+  const libType = mapJobTypeToLibraryType(jobType);
+  await updateVideoStatus(payload.videoId, VideoStatus.QUEUED, undefined, libType);
 }
 export const transcodeVideo = asyncHandler(async (req: Request, res: Response) => {
   const { videoId, resolution } = req.body;
@@ -34,7 +41,7 @@ export const transcodeVideo = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const compressVideo = asyncHandler(async (req: Request, res: Response) => {
-  const { videoId, targetSizeMB } = req.body;
+  const { videoId, targetSizeMB, upscale } = req.body;
   if (!videoId) throw new ApiError(400, 'videoId is required');
   if (!targetSizeMB || targetSizeMB <= 0) throw new ApiError(400, 'targetSizeMB must be a positive number');
 
@@ -47,10 +54,11 @@ export const compressVideo = asyncHandler(async (req: Request, res: Response) =>
     bucket: env.S3_RAW_BUCKET,
     jobType: 'compress',
     targetSizeMB: Number(targetSizeMB),
+    upscale: Boolean(upscale),
   });
 
   return res.status(202).json(
-    new ApiResponse(202, { videoId, jobType: 'compress', targetSizeMB }, 'Compress job queued')
+    new ApiResponse(202, { videoId, jobType: 'compress', targetSizeMB, upscale: Boolean(upscale) }, 'Compress job queued')
   );
 });
 export const convertVideo = asyncHandler(async (req: Request, res: Response) => {
@@ -146,6 +154,7 @@ export const downloadFromUrl = asyncHandler(async (req: Request, res: Response) 
     originalName: new URL(sourceUrl).pathname.split('/').pop() || sourceUrl,
     mimeType: 'video/unknown',
     sizeBytes: 0,
+    jobType: 'download',
   });
 
   await enqueueProcessJob('download-url', {

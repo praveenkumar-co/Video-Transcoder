@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import 'finisher-header';
 import { UploadWidget } from './components/UploadWidget';
 import { VideoPlayer } from './components/VideoPlayer';
@@ -16,18 +17,25 @@ import {
   triggerExtractAudio,
   triggerTrim,
   triggerDownloadUrl,
+  deleteVideo,
+  getVideoDownloadUrlAPI,
 } from './api/upload.api';
 import { VideoMetaData } from './types';
 import {
   ArrowRight,
+  BarChart3,
+  Bot,
   ChevronDown,
+  CloudUpload,
   Download,
   ExternalLink,
   FileVideo,
   FolderDown,
   Gauge,
   Globe2,
+  Link,
   LogOut,
+  Mail,
   Moon,
   Music,
   Palette,
@@ -35,14 +43,26 @@ import {
   RefreshCw,
   Scissors,
   Settings,
+  Share2,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Sun,
+  TvMinimalPlay,
+  Trash2,
+  Upload,
+  UsersRound,
   Video,
   Wand2,
   X,
   Zap,
+  LayoutGrid,
+  Minimize2,
+  Clapperboard,
+  AudioLines,
+  Scissors as ScissorsIcon,
+  ArrowDownToLine,
+  Check,
 } from 'lucide-react';
 import apiIconUrl from './icons/api.svg?url';
 import audioIconUrl from './icons/audio-svgrepo-com.svg?url';
@@ -57,6 +77,7 @@ import trimIconUrl from './icons/trim-svgrepo-com.svg?url';
 import videoAnalyticsIconUrl from './icons/video-player-streaming-svgrepo-com.svg?url';
 import videoEditorIconUrl from './icons/Video-Edit-Cut--Streamline-Ultimate.svg?url';
 import videoSummariesIconUrl from './icons/Video-Player-Movie-2--Streamline-Ultimate.svg?url';
+import forgeGlowAnimationUrl from './features/messageblocksmoving-intimframe.json?url';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export type PageView =
@@ -77,6 +98,31 @@ export type PageView =
 // Legacy compatibility export used by Dashboard.tsx
 export type TabType = 'dashboard' | 'play' | 'compress' | 'gif' | 'download';
 
+type CompressSourceTab = 'upload' | 'cloud' | 'url' | 'library';
+
+interface CompressOutputRecord {
+  videoId: string;
+  originalName: string;
+  sizeBytes: number;
+  outputUrl?: string;
+  targetSizeMB: number;
+  upscale: boolean;
+  completedAt: string;
+}
+
+type LibraryFilter = 'all' | 'compress' | 'transcode' | 'convert' | 'audio' | 'trim' | 'download';
+
+// Generic output record for all service pages
+interface ServiceOutputRecord {
+  videoId: string;
+  originalName: string;
+  outputUrl?: string;
+  masterPlaylistUrl?: string;
+  sizeBytes?: number;
+  jobType: string;
+  extra?: Record<string, string | number | boolean>;
+  queuedAt: string;
+}
 
 type ThemeMode = 'midnight' | 'daylight';
 
@@ -177,7 +223,127 @@ function AppIconMarquee() {
 }
 
 function getInitials(name: string) {
-  return name.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'VF';
+  return name.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'VU';
+}
+
+function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  } else {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'absolute';
+    textArea.style.opacity = '0';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, 99999);
+    try {
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (successful) {
+        return Promise.resolve();
+      } else {
+        window.prompt("Copy this share link:", text);
+        return Promise.resolve();
+      }
+    } catch (err) {
+      if (document.body.contains(textArea)) {
+        document.body.removeChild(textArea);
+      }
+      window.prompt("Copy this share link:", text);
+      return Promise.resolve();
+    }
+  }
+}
+
+function formatRelativeTime(dateInput: string | Date): string {
+  try {
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return 'unknown date';
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) return 'Just now';
+    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+    if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+    
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return 'unknown date';
+  }
+}
+
+function triggerBlobDownload(
+  url: string,
+  originalName?: string,
+  showStatusCallback?: (text: string, type?: 'success' | 'error' | 'info') => void
+) {
+  let downloadUrl = url;
+  if (url.toLowerCase().includes('.m3u8')) {
+    if (url.endsWith('index.m3u8')) {
+      downloadUrl = url.replace('index.m3u8', 'video.mp4');
+    } else if (url.endsWith('master.m3u8')) {
+      downloadUrl = url.replace('master.m3u8', '0/video.mp4');
+    } else {
+      const lastSlash = url.lastIndexOf('/');
+      downloadUrl = url.substring(0, lastSlash) + '/video.mp4';
+    }
+  }
+
+  if (showStatusCallback) {
+    showStatusCallback('Preparing download...', 'info');
+  }
+
+  fetch(downloadUrl)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.blob();
+    })
+    .then((blob) => {
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      
+      let filename = 'video.mp4';
+      if (originalName) {
+        const cleanName = originalName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        filename = `${cleanName}.mp4`;
+      } else {
+        filename = downloadUrl.split('/').pop() || 'video.mp4';
+        if (!filename.endsWith('.mp4')) filename += '.mp4';
+      }
+      
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+      if (showStatusCallback) {
+        showStatusCallback('Download started!', 'success');
+      }
+    })
+    .catch((err) => {
+      console.warn('Fetch download failed:', err);
+      const is403 = err?.message?.includes('HTTP 403');
+      if (is403) {
+        if (showStatusCallback) {
+          showStatusCallback('MP4 not found on S3. (Older transcodes lack MP4s — please re-transcode).', 'error');
+        }
+      } else {
+        if (showStatusCallback) {
+          showStatusCallback('CORS restriction or network issue. Opening file in new tab...', 'info');
+        }
+        window.open(downloadUrl, '_blank');
+      }
+    });
 }
 
 declare const gsap: any;
@@ -272,6 +438,302 @@ function GsapDock({ onSelectTool }: { onSelectTool: (key: PageView) => void }) {
   );
 }
 
+// ─── Service Action Bar ─────────────────────────────────────────────────────
+function ServiceActionBar({
+  outputUrl,
+  outputStatus,
+  videoName,
+  onView,
+  onShare,
+  onDownload,
+}: {
+  outputUrl?: string | null;
+  outputStatus?: string;
+  videoName?: string;
+  onView: () => void;
+  onShare: () => void;
+  onDownload?: () => void;
+}) {
+  const canAct = !!outputUrl && outputStatus === 'completed';
+  const isProcessing = outputStatus === 'processing' || outputStatus === 'queued';
+
+  return (
+    <div className="service-action-bar">
+      <div className="sab-left">
+        <span className="sab-label">
+          {isProcessing ? (
+            <><RefreshCw size={12} className="pulse-anim" /> Processing…</>
+          ) : canAct ? (
+            <><PlayCircle size={12} /> {videoName || 'Output ready'}</>
+          ) : (
+            <><FileVideo size={12} /> Run a job to unlock actions</>
+          )}
+        </span>
+      </div>
+      <div className="sab-actions">
+        {/* View */}
+        <button
+          className={`sab-btn view ${canAct ? '' : 'disabled'}`}
+          disabled={!canAct}
+          onClick={onView}
+          title="Watch output video"
+        >
+          <PlayCircle size={14} />
+          View
+        </button>
+
+        {/* Download */}
+        <button
+          className={`sab-btn download ${canAct ? '' : 'disabled'}`}
+          disabled={!canAct}
+          onClick={onDownload}
+          title="Download output file"
+        >
+          <Download size={14} />
+          Download
+        </button>
+
+        {/* Share */}
+        <button
+          className={`sab-btn share ${canAct ? '' : 'disabled'}`}
+          disabled={!canAct}
+          onClick={onShare}
+          title="Copy link to clipboard"
+        >
+          <Share2 size={14} />
+          Share
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function extractVideoIdFromUrl(url: string): string | null {
+  const match = url.match(/\/processed\/([a-f0-9-]{36})\//i);
+  return match ? match[1] : null;
+}
+
+// ─── Social Share Dropdown ────────────────────────────────────────────────────
+function ShareDropdown({
+  shareUrl,
+  videoTitle,
+  onCopied,
+}: {
+  shareUrl: string;
+  videoTitle?: string;
+  onCopied?: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const title = encodeURIComponent(videoTitle || 'Check out this video');
+  const encodedUrl = encodeURIComponent(shareUrl);
+
+  const shareOptions = [
+    {
+      id: 'whatsapp',
+      label: 'WhatsApp',
+      color: '#25D366',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+          <path d="M12.004 0C5.374 0 0 5.373 0 12c0 2.117.554 4.107 1.523 5.832L.057 23.887l6.209-1.63A11.935 11.935 0 0012.004 24C18.629 24 24 18.627 24 12S18.629 0 12.004 0zm0 21.818a9.818 9.818 0 01-5.002-1.37l-.36-.214-3.685.967.983-3.596-.235-.368A9.82 9.82 0 012.18 12c0-5.42 4.404-9.818 9.824-9.818 5.42 0 9.818 4.398 9.818 9.818 0 5.42-4.398 9.818-9.818 9.818z"/>
+        </svg>
+      ),
+      href: `https://wa.me/?text=${title}%0A${encodedUrl}`,
+    },
+    {
+      id: 'twitter',
+      label: 'X (Twitter)',
+      color: '#000000',
+      icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+        </svg>
+      ),
+      href: `https://twitter.com/intent/tweet?text=${title}&url=${encodedUrl}`,
+    },
+    {
+      id: 'email',
+      label: 'Email',
+      color: '#6366f1',
+      icon: <Mail size={15} />,
+      href: `mailto:?subject=${title}&body=Watch%20this%20video%3A%0A${encodedUrl}`,
+    },
+  ];
+
+  const handleCopy = () => {
+    copyToClipboard(shareUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      if (onCopied) onCopied();
+      setOpen(false);
+    });
+  };
+
+  return (
+    <div className="share-dropdown-wrap" ref={ref}>
+      <button
+        className="modal-action-btn share-trigger"
+        onClick={() => setOpen(o => !o)}
+        title="Share this video"
+      >
+        <Share2 size={14} /> Share
+      </button>
+      {open && (
+        <div className="share-dropdown-menu">
+          <div className="share-dropdown-header">Share via</div>
+          {shareOptions.map(opt => (
+            <a
+              key={opt.id}
+              href={opt.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="share-option"
+              onClick={() => setOpen(false)}
+            >
+              <span className="share-option-icon" style={{ color: opt.color }}>
+                {opt.icon}
+              </span>
+              <span>{opt.label}</span>
+            </a>
+          ))}
+          <hr className="share-divider" />
+          <button className="share-option copy" onClick={handleCopy}>
+            <span className="share-option-icon">
+              {copied ? <Check size={15} color="#22c55e" /> : <Link size={15} />}
+            </span>
+            <span>{copied ? 'Copied!' : 'Copy Link'}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VideoPlayModalInner({
+  url,
+  video,
+  preferredResolution,
+  onClose,
+  onDeleteVideo,
+  showStatus,
+  activeSection,
+  onDownloadVideo,
+}: {
+  url: string;
+  video: VideoMetaData | null;
+  preferredResolution?: string;
+  onClose: () => void;
+  onDeleteVideo?: (videoId: string, section?: string) => Promise<void>;
+  showStatus?: (text: string, type?: 'success' | 'error' | 'info') => void;
+  activeSection?: string;
+  onDownloadVideo?: (videoId: string, originalName?: string, resolution?: string) => void;
+}) {
+  const [currentPlayUrl, setCurrentPlayUrl] = useState(url);
+  const [currentResName, setCurrentResName] = useState(preferredResolution || 'Auto');
+
+  const handleResChange = useCallback((name: string, index: number, playUrl: string) => {
+    setCurrentPlayUrl(playUrl);
+    setCurrentResName(name);
+  }, []);
+
+  const handleShare = () => {
+    copyToClipboard(currentPlayUrl)
+      .then(() => {
+        if (showStatus) showStatus('Link copied to clipboard!', 'success');
+      })
+      .catch(() => {
+        if (showStatus) showStatus('Failed to copy link', 'error');
+      });
+  };
+
+  const handleDownload = () => {
+    const vidId = video?.videoId || extractVideoIdFromUrl(currentPlayUrl);
+    if (vidId && onDownloadVideo) {
+      onDownloadVideo(vidId, video?.originalName, currentResName);
+    } else {
+      triggerBlobDownload(currentPlayUrl, video?.originalName, showStatus);
+    }
+  };
+
+  const handleDelete = async () => {
+    const vidId = video?.videoId || extractVideoIdFromUrl(currentPlayUrl);
+    if (!vidId || !onDeleteVideo) return;
+    const isIsolated = activeSection && activeSection !== 'all';
+    const originalName = video?.originalName || 'this video';
+    const confirmMsg = isIsolated
+      ? `Are you sure you want to remove "${originalName}" from the ${activeSection} section? (It will still remain in All Videos)`
+      : `Are you sure you want to delete "${originalName}" permanently from all sections?`;
+    if (window.confirm(confirmMsg)) {
+      try {
+        await onDeleteVideo(vidId, activeSection);
+        onClose();
+        if (showStatus) {
+          showStatus(isIsolated ? 'Removed from this section.' : 'Video deleted permanently.', 'success');
+        }
+      } catch (err: any) {
+        if (showStatus) showStatus(err.message || 'Failed to delete video', 'error');
+      }
+    }
+  };
+
+  const formatBytes = (b: number) => {
+    if (!b) return '0 B';
+    const s = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(b) / Math.log(1024));
+    return `${(b / Math.pow(1024, i)).toFixed(1)} ${s[i]}`;
+  };
+
+  const hasDeleteTarget = !!video || !!extractVideoIdFromUrl(currentPlayUrl);
+
+  return (
+    <>
+      <VideoPlayer 
+        url={url} 
+        preferredResolution={preferredResolution} 
+        onResolutionChange={handleResChange} 
+      />
+      <div className="video-modal-control-bar">
+        <div className="video-modal-info">
+          <div className="video-modal-title" title={video?.originalName}>
+            {video?.originalName || 'Playing Video'}
+          </div>
+          <div className="video-modal-meta">
+            {video?.sizeBytes ? <span>{formatBytes(video.sizeBytes)}</span> : null}
+            {video?.sizeBytes ? <span className="dot">•</span> : null}
+            <span>Playing: <span className="video-modal-res-badge">{currentResName}</span></span>
+          </div>
+        </div>
+        <div className="video-modal-actions">
+          <ShareDropdown
+            shareUrl={currentPlayUrl}
+            videoTitle={video?.originalName}
+            onCopied={() => showStatus && showStatus('Link copied!', 'success')}
+          />
+          <button className="modal-action-btn primary" onClick={handleDownload} title="Download resolution file/playlist">
+            <Download size={14} /> Download
+          </button>
+          {hasDeleteTarget && onDeleteVideo && (
+            <button className="modal-action-btn danger" onClick={handleDelete} title="Delete video permanently">
+              <Trash2 size={14} /> Delete
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Feature Page Wrapper ─────────────────────────────────────────────────────
 function FeaturePage({
   tool,
@@ -282,6 +744,15 @@ function FeaturePage({
   onRefresh,
   selectedVideo,
   onSelectVideo,
+  activePlayUrl,
+  setActivePlayUrl,
+  activePlayResolution,
+  activePlayVideo,
+  setActivePlayVideo,
+  onDeleteVideo,
+  showStatus,
+  onDownloadVideo,
+  fullWidth,
 }: {
   tool: typeof navTools[0];
   children: React.ReactNode;
@@ -290,22 +761,18 @@ function FeaturePage({
   onBack: () => void;
   onRefresh: () => void;
   selectedVideo: VideoMetaData | null;
-  onSelectVideo: (v: VideoMetaData) => void;
+  onSelectVideo: (v: VideoMetaData | null) => void;
+  activePlayUrl?: string | null;
+  setActivePlayUrl?: (url: string | null) => void;
+  activePlayResolution?: string;
+  activePlayVideo?: VideoMetaData | null;
+  setActivePlayVideo?: (video: VideoMetaData | null) => void;
+  onDeleteVideo?: (videoId: string) => Promise<void>;
+  showStatus?: (text: string, type?: 'success' | 'error' | 'info') => void;
+  onDownloadVideo?: (videoId: string, originalName?: string, resolution?: string) => void;
+  fullWidth?: boolean;
 }) {
   const Icon = tool.icon;
-
-  const formatBytes = (b: number) => {
-    if (!b) return '0 B';
-    const s = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(b) / Math.log(1024));
-    return `${(b / Math.pow(1024, i)).toFixed(1)} ${s[i]}`;
-  };
-
-  const displayName = (v: VideoMetaData) => {
-    const n = v.originalName?.trim();
-    if (!n || /^tr\.mp4$/i.test(n)) return `Asset ${v.videoId.slice(0, 6)}`;
-    return n;
-  };
 
   return (
     <div className="feature-page animate-page-in">
@@ -324,13 +791,160 @@ function FeaturePage({
 
       <div className="feature-page-body">
         {/* Left: Tool Form */}
-        <section className="feature-page-main" style={{ maxWidth: '840px', margin: '0 auto', width: '100%' }}>
+        <section className="feature-page-main" style={{ maxWidth: fullWidth ? '1140px' : '840px', margin: '0 auto', width: '100%' }}>
           {children}
         </section>
       </div>
+
+      {/* VIDEO MODAL OVERLAY */}
+      {activePlayUrl && setActivePlayUrl && createPortal(
+        <div className="video-modal-overlay" onClick={() => { setActivePlayUrl(null); if (setActivePlayVideo) setActivePlayVideo(null); }}>
+          <div className="video-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="video-modal-close" onClick={() => { setActivePlayUrl(null); if (setActivePlayVideo) setActivePlayVideo(null); }}>×</button>
+            <div className="video-modal-body">
+              <VideoPlayModalInner
+                url={activePlayUrl}
+                video={activePlayVideo || null}
+                preferredResolution={activePlayResolution}
+                onClose={() => { setActivePlayUrl(null); if (setActivePlayVideo) setActivePlayVideo(null); }}
+                onDeleteVideo={onDeleteVideo}
+                showStatus={showStatus}
+                onDownloadVideo={onDownloadVideo}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
+// ─── Video Selector Search Bar Component ──────────────────────────────────────
+function VideoSelector({
+  allVideos,
+  selectedVideo,
+  onSelectVideo,
+  placeholder = "Search video by name..."
+}: {
+  allVideos: VideoMetaData[];
+  selectedVideo: VideoMetaData | null;
+  onSelectVideo: (v: VideoMetaData | null) => void;
+  placeholder?: string;
+}) {
+  const [search, setSearch] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = allVideos.filter(v => 
+    v.originalName?.toLowerCase().includes(search.toLowerCase()) ||
+    v.videoId.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div ref={wrapperRef} className="video-selector-container" style={{ position: 'relative', width: '100%' }}>
+      <div className="video-selector-input-wrapper" style={{ display: 'flex', gap: '8px' }}>
+        <input
+          type="text"
+          className="text-input"
+          placeholder={placeholder}
+          value={selectedVideo ? selectedVideo.originalName : search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (selectedVideo) {
+              onSelectVideo(null); // Clear selection if typing
+            }
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          style={{ paddingRight: selectedVideo ? '40px' : '12px' }}
+        />
+        {selectedVideo && (
+          <button 
+            className="btn btn-secondary" 
+            type="button"
+            style={{ padding: '0 14px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+            onClick={() => {
+              onSelectVideo(null);
+              setSearch('');
+            }}
+          >
+            Clear Selected
+          </button>
+        )}
+      </div>
+
+      {isOpen && !selectedVideo && (
+        <div 
+          className="video-selector-dropdown" 
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            background: 'var(--card-bg, #fff)',
+            border: '1px solid var(--border-color, rgba(0,0,0,0.1))',
+            borderRadius: '8px',
+            maxHeight: '220px',
+            overflowY: 'auto',
+            zIndex: 150,
+            marginTop: '4px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.1)'
+          }}
+        >
+          {filtered.length > 0 ? (
+            filtered.map(v => (
+              <div
+                key={v.videoId}
+                className="video-selector-item"
+                style={{
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid rgba(0,0,0,0.05)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  transition: 'background 0.15s'
+                }}
+                onClick={() => {
+                  onSelectVideo(v);
+                  setIsOpen(false);
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.02)')}
+                onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'grid', textAlign: 'left' }}>
+                  <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>{v.originalName}</strong>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    {new Date(v.uploadedAt).toLocaleDateString()} · {(v.sizeBytes / (1024*1024)).toFixed(1)} MB
+                  </span>
+                </div>
+                <span className={`stat-tag ${v.status}`} style={{ fontSize: '0.65rem' }}>
+                  {v.status}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div style={{ padding: '14px', fontSize: '0.85rem', color: '#64748b', textAlign: 'center' }}>
+              No videos found
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // ─── Dropdown Options ────────────────────────────────────────────────────────
 const toolsMegaOptions = [
@@ -357,6 +971,7 @@ function App() {
   const [isLeftDrawerOpen, setIsLeftDrawerOpen] = useState(false);
   const [isToolsDropdownOpen, setIsToolsDropdownOpen] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const finisherCleanupsRef = useRef<(() => void)[]>([]);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isResourcesDropdownOpen, setIsResourcesDropdownOpen] = useState(false);
@@ -365,6 +980,39 @@ function App() {
 
   const [allVideos, setAllVideos] = useState<VideoMetaData[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<VideoMetaData | null>(null);
+  const [activePlayUrl, _setActivePlayUrl] = useState<string | null>(null);
+  const [activePlayResolution, setActivePlayResolution] = useState<string | undefined>(undefined);
+  const [activePlayVideo, setActivePlayVideo] = useState<VideoMetaData | null>(null);
+  const [hiddenSectionVideos, setHiddenSectionVideos] = useState<Record<string, string[]>>(() => {
+    try {
+      const stored = localStorage.getItem('vf-hidden-section-videos');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const hideVideoFromSection = (videoId: string, section: string) => {
+    setHiddenSectionVideos(prev => {
+      const updated = { ...prev };
+      const existing = updated[videoId] || [];
+      if (!existing.includes(section)) {
+        updated[videoId] = [...existing, section];
+      }
+      localStorage.setItem('vf-hidden-section-videos', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const setActivePlayUrl = (url: string | null) => {
+    _setActivePlayUrl(url);
+    if (!url) {
+      setActivePlayVideo(null);
+    } else {
+      const match = allVideos.find(v => v.outputUrl === url || v.masterPlaylistUrl === url);
+      setActivePlayVideo(match || null);
+    }
+  };
 
   const [compressSize, setCompressSize] = useState(25);
   const [downloadUrl, setDownloadUrl] = useState('');
@@ -375,6 +1023,46 @@ function App() {
   const [trimEnd, setTrimEnd] = useState(30);
   const [googleEmail, setGoogleEmail] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // ─── Compress page state ────────────────────────────────────────────────────
+  const [compressSourceTab, setCompressSourceTab] = useState<CompressSourceTab>('upload');
+  const [compressUrlInput, setCompressUrlInput] = useState('');
+  const [compressAiUpscale, setCompressAiUpscale] = useState(false);
+  const [compressIsProcessing, setCompressIsProcessing] = useState(false);
+  const [showCloudModal, setShowCloudModal] = useState(false);
+  const [shareUrlForModal, setShareUrlForModal] = useState<string | null>(null);
+  const [compressOutputRecord, setCompressOutputRecord] = useState<CompressOutputRecord | null>(() => {
+    try { const s = localStorage.getItem('vf-compress-output'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+
+  const hasStartedCompression = !!compressOutputRecord || compressIsProcessing;
+
+  useEffect(() => {
+    if (hasStartedCompression && compressSize < 25) {
+      setCompressSize(25);
+    }
+  }, [hasStartedCompression, compressSize]);
+
+  // ─── Per-page output records (persist across reloads) ─────────────────────
+  const [transcodeOutputRecord, setTranscodeOutputRecord] = useState<ServiceOutputRecord | null>(() => {
+    try { const s = localStorage.getItem('vf-transcode-output'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [convertOutputRecord, setConvertOutputRecord] = useState<ServiceOutputRecord | null>(() => {
+    try { const s = localStorage.getItem('vf-convert-output'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [audioOutputRecord, setAudioOutputRecord] = useState<ServiceOutputRecord | null>(() => {
+    try { const s = localStorage.getItem('vf-audio-output'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [trimOutputRecord, setTrimOutputRecord] = useState<ServiceOutputRecord | null>(() => {
+    try { const s = localStorage.getItem('vf-trim-output'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [downloadOutputRecord, setDownloadOutputRecord] = useState<ServiceOutputRecord | null>(() => {
+    try { const s = localStorage.getItem('vf-download-output'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+
+  // ─── Library filter state ────────────────────────────────────────────────────
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
+
 
   const [profile, setProfile] = useState<ProfileState>(() => {
     const s = localStorage.getItem('videoforge-profile');
@@ -396,12 +1084,95 @@ function App() {
     try { setAllVideos(await listVideos()); } catch {}
   };
 
+  const handleDeleteVideo = async (videoId: string, section?: string) => {
+    if (section && section !== 'all') {
+      hideVideoFromSection(videoId, section);
+    } else {
+      await deleteVideo(videoId);
+      if (selectedVideo?.videoId === videoId) setSelectedVideo(null);
+      if (activePlayVideo?.videoId === videoId) {
+        setActivePlayVideo(null);
+        _setActivePlayUrl(null);
+      }
+      await loadVideos();
+    }
+  };
+
   useEffect(() => {
     document.documentElement.dataset.theme = 'daylight';
     localStorage.setItem('videoforge-profile', JSON.stringify({ ...profile, theme: 'daylight' }));
   }, [profile]);
 
   useEffect(() => {
+    if (document.querySelector('script[data-videoforge-dotlottie]')) return;
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs';
+    script.type = 'module';
+    script.dataset.videoforgeDotlottie = 'true';
+    document.head.appendChild(script);
+  }, []);
+  useEffect(() => {
+    try {
+      // @ts-ignore
+      const FinisherHeaderClass = (window as any).FinisherHeader;
+      if (typeof FinisherHeaderClass !== 'undefined' && FinisherHeaderClass.prototype) {
+        const proto = FinisherHeaderClass.prototype;
+        
+        // Patch gr to return a dummy element instead of throwing if elements are missing
+        if (!proto.gr || !proto.gr.__patched) {
+          const patchedGr = function(t: any) {
+            try {
+              const i = document.getElementsByClassName(t || "finisher-header");
+              if (!i || !i.length) {
+                return document.createElement('div');
+              }
+              return i[0];
+            } catch {
+              return document.createElement('div');
+            }
+          };
+          (patchedGr as any).__patched = true;
+          Object.defineProperty(proto, 'gr', {
+            value: patchedGr,
+            writable: true,
+            configurable: true
+          });
+        }
+
+        // Patch an to stop requestAnimationFrame loop when the canvas is unmounted
+        if (!proto.an || !proto.an.__patched) {
+          const originalAn = proto.an;
+          const patchedAn = function(this: any) {
+            if (this.c && !this.c.isConnected) {
+              return;
+            }
+            if (originalAn) {
+              originalAn.call(this);
+            }
+          };
+          (patchedAn as any).__patched = true;
+          Object.defineProperty(proto, 'an', {
+            value: patchedAn,
+            writable: true,
+            configurable: true
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to patch FinisherHeader prototype:", e);
+    }
+  }, []);
+
+
+  useEffect(() => {
+    // Clean up previous event listeners
+    finisherCleanupsRef.current.forEach(cleanup => {
+      try {
+        cleanup();
+      } catch (e) { /* ignore */ }
+    });
+    finisherCleanupsRef.current = [];
 
     // Remove existing canvases from any finisher containers we manage
     const selectors = ['.finisher-header', '.finisher-header-top'];
@@ -426,20 +1197,57 @@ function App() {
 
     try {
       // @ts-ignore
-      if (typeof (window as any).FinisherHeader !== 'undefined') {
-        try { // header (for other subpages with smaller top headers)
-          // @ts-ignore
-          new (window as any).FinisherHeader({ ...config, className: 'finisher-header-top' });
-        } catch (e) { /* ignore if that container doesn't exist */ }
+      const FinisherHeaderClass = (window as any).FinisherHeader;
+      if (typeof FinisherHeaderClass !== 'undefined') {
+        const originalAddEventListener = window.addEventListener;
+        const captured: { type: string; listener: any; options: any }[] = [];
 
-        try { // unified header + hero container (for home page)
-          // @ts-ignore
-          new (window as any).FinisherHeader({ ...config, className: 'finisher-header' });
-        } catch (e) { /* ignore if that container doesn't exist */ }
+        // Temporarily intercept window.addEventListener to capture the resize listener registered by FinisherHeader constructor
+        window.addEventListener = function(type: string, listener: any, options?: any) {
+          if (type === 'resize') {
+            captured.push({ type, listener, options });
+          }
+          return originalAddEventListener.call(this, type, listener, options);
+        };
+
+        if (document.querySelector('.finisher-header-top')) {
+          try {
+            // @ts-ignore
+            new FinisherHeaderClass({ ...config, className: 'finisher-header-top' });
+          } catch (e) { /* ignore */ }
+        }
+
+        if (document.querySelector('.finisher-header')) {
+          try {
+            // @ts-ignore
+            new FinisherHeaderClass({ ...config, className: 'finisher-header' });
+          } catch (e) { /* ignore */ }
+        }
+
+        // Restore window.addEventListener
+        window.addEventListener = originalAddEventListener;
+
+        // Save cleanup function for captured listeners
+        if (captured.length > 0) {
+          finisherCleanupsRef.current.push(() => {
+            captured.forEach(({ type, listener, options }) => {
+              window.removeEventListener(type, listener, options);
+            });
+          });
+        }
       }
     } catch (err) {
       console.error("FinisherHeader initialization error:", err);
     }
+
+    return () => {
+      finisherCleanupsRef.current.forEach(cleanup => {
+        try {
+          cleanup();
+        } catch (e) { /* ignore */ }
+      });
+      finisherCleanupsRef.current = [];
+    };
   }, [page]);
 
   useEffect(() => {
@@ -712,6 +1520,26 @@ function App() {
     setTimeout(() => setStatusMessage(null), 5000);
   };
 
+  const handleDownloadVideo = async (videoId: string, originalName?: string, resolution?: string) => {
+    showStatus('Preparing secure download...', 'info');
+    try {
+      const downloadUrl = await getVideoDownloadUrlAPI(videoId, resolution);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      if (originalName) {
+        const cleanName = originalName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        link.download = `${cleanName}.mp4`;
+      }
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showStatus('Download started!', 'success');
+    } catch (err: any) {
+      console.error('Download failed:', err);
+      showStatus(err.message || 'Failed to prepare download', 'error');
+    }
+  };
+
   const goTo = (p: PageView) => {
     setPage(p);
     setIsLeftDrawerOpen(false);
@@ -734,7 +1562,7 @@ function App() {
 
   const displayVideoName = (v: VideoMetaData) => {
     const n = v.originalName?.trim();
-    if (!n || /^tr\.mp4$/i.test(n)) return `Asset ${v.videoId.slice(0, 6)}`;
+    if (!n || /^tr\.mp4$/i.test(n) || /^watch$/i.test(n)) return `Asset ${v.videoId.slice(0, 6)}`;
     return n;
   };
 
@@ -753,20 +1581,69 @@ function App() {
 
   // ─── Action handlers ─────────────────────────────────────────────────────────
   const handleCompress = async (videoId: string) => {
+    if (selectedVideo) {
+      const sizeInMB = selectedVideo.sizeBytes / (1024 * 1024);
+      if (selectedVideo.sizeBytes < 30 * 1024 * 1024) {
+        showStatus('This video is too small to be compressed (less than 30 MB). Please try another larger video!', 'error');
+        return;
+      }
+      if (sizeInMB <= compressSize) {
+        showStatus(`This video (${sizeInMB.toFixed(1)} MB) is already smaller than or equal to the target size (${compressSize} MB). Please select a smaller target size or another video!`, 'error');
+        return;
+      }
+    }
     try {
+      setCompressIsProcessing(true);
       showStatus('Queuing compression…', 'info');
-      await triggerCompress(videoId, compressSize);
-      showStatus('Compression queued.', 'success');
+      const result = await triggerCompress(videoId, compressSize, compressAiUpscale);
+      showStatus('Compression queued! Output will appear on the right when ready.', 'success');
+      // Save a pending output record so the right panel shows progress
+      const record: CompressOutputRecord = {
+        videoId: result?.videoId ?? videoId,
+        originalName: selectedVideo?.originalName ?? 'Compressed Video',
+        sizeBytes: selectedVideo?.sizeBytes ?? 0,
+        outputUrl: result?.outputUrl,
+        targetSizeMB: compressSize,
+        upscale: compressAiUpscale,
+        completedAt: new Date().toISOString(),
+      };
+      setCompressOutputRecord(record);
+      localStorage.setItem('vf-compress-output', JSON.stringify(record));
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
+    finally { setCompressIsProcessing(false); }
+  };
+
+  const handleCompressFromUrl = async () => {
+    if (!compressUrlInput.trim()) { showStatus('Please enter a video URL.', 'error'); return; }
+    try {
+      setCompressIsProcessing(true);
+      showStatus('Fetching video from URL and queuing compression…', 'info');
+      // First download the URL video, then it lands in allVideos and we compress it
+      const dlResult = await triggerDownloadUrl(compressUrlInput.trim());
+      showStatus('Video fetched! Compression will start automatically once downloaded.', 'success');
+      setCompressUrlInput('');
+      loadVideos();
+    } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
+    finally { setCompressIsProcessing(false); }
   };
 
   const handleDownload = async () => {
     if (!downloadUrl) return showStatus('Enter a URL first.', 'error');
     try {
       showStatus('Queuing download…', 'info');
-      await triggerDownloadUrl(downloadUrl);
-      showStatus('Download queued.', 'success');
+      const result = await triggerDownloadUrl(downloadUrl);
+      showStatus('Download queued! It will appear in your library when ready.', 'success');
+      const record: ServiceOutputRecord = {
+        videoId: result?.videoId ?? 'pending',
+        originalName: downloadUrl.split('/').pop() || 'Downloaded Video',
+        outputUrl: result?.outputUrl,
+        jobType: 'download',
+        extra: { sourceUrl: downloadUrl },
+        queuedAt: new Date().toISOString(),
+      };
+      setDownloadOutputRecord(record);
+      localStorage.setItem('vf-download-output', JSON.stringify(record));
       setDownloadUrl('');
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
@@ -775,8 +1652,19 @@ function App() {
   const handleTranscode = async (videoId: string) => {
     try {
       showStatus('Queuing HLS transcode…', 'info');
-      await triggerTranscode(videoId, transcodeResolution);
-      showStatus('Transcode queued.', 'success');
+      const result = await triggerTranscode(videoId, transcodeResolution);
+      showStatus('Transcode queued! Output will appear when ready.', 'success');
+      const record: ServiceOutputRecord = {
+        videoId: result?.videoId ?? videoId,
+        originalName: selectedVideo?.originalName ?? 'Transcoded Video',
+        masterPlaylistUrl: result?.masterPlaylistUrl,
+        sizeBytes: selectedVideo?.sizeBytes,
+        jobType: 'transcode',
+        extra: { resolution: transcodeResolution },
+        queuedAt: new Date().toISOString(),
+      };
+      setTranscodeOutputRecord(record);
+      localStorage.setItem('vf-transcode-output', JSON.stringify(record));
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
   };
@@ -784,8 +1672,19 @@ function App() {
   const handleConvert = async (videoId: string) => {
     try {
       showStatus('Queuing conversion…', 'info');
-      await triggerConvert(videoId, convertFormat);
-      showStatus('Conversion queued.', 'success');
+      const result = await triggerConvert(videoId, convertFormat);
+      showStatus('Conversion queued! Output will appear when ready.', 'success');
+      const record: ServiceOutputRecord = {
+        videoId: result?.videoId ?? videoId,
+        originalName: selectedVideo?.originalName ?? 'Converted Video',
+        outputUrl: result?.outputUrl,
+        sizeBytes: selectedVideo?.sizeBytes,
+        jobType: 'convert',
+        extra: { format: convertFormat },
+        queuedAt: new Date().toISOString(),
+      };
+      setConvertOutputRecord(record);
+      localStorage.setItem('vf-convert-output', JSON.stringify(record));
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
   };
@@ -793,8 +1692,19 @@ function App() {
   const handleExtractAudio = async (videoId: string) => {
     try {
       showStatus('Queuing audio extraction…', 'info');
-      await triggerExtractAudio(videoId, audioFormat);
-      showStatus('Audio extraction queued.', 'success');
+      const result = await triggerExtractAudio(videoId, audioFormat);
+      showStatus('Audio extraction queued! Output will appear when ready.', 'success');
+      const record: ServiceOutputRecord = {
+        videoId: result?.videoId ?? videoId,
+        originalName: selectedVideo?.originalName ?? 'Audio Track',
+        outputUrl: result?.outputUrl,
+        sizeBytes: selectedVideo?.sizeBytes,
+        jobType: 'audio',
+        extra: { audioFormat },
+        queuedAt: new Date().toISOString(),
+      };
+      setAudioOutputRecord(record);
+      localStorage.setItem('vf-audio-output', JSON.stringify(record));
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
   };
@@ -802,8 +1712,19 @@ function App() {
   const handleTrim = async (videoId: string) => {
     try {
       showStatus('Queuing trim job…', 'info');
-      await triggerTrim(videoId, trimStart, trimEnd);
-      showStatus('Trim queued.', 'success');
+      const result = await triggerTrim(videoId, trimStart, trimEnd);
+      showStatus('Clip queued! Output will appear when ready.', 'success');
+      const record: ServiceOutputRecord = {
+        videoId: result?.videoId ?? videoId,
+        originalName: selectedVideo?.originalName ?? 'Clipped Video',
+        outputUrl: result?.outputUrl,
+        sizeBytes: selectedVideo?.sizeBytes,
+        jobType: 'trim',
+        extra: { startTime: trimStart, endTime: trimEnd },
+        queuedAt: new Date().toISOString(),
+      };
+      setTrimOutputRecord(record);
+      localStorage.setItem('vf-trim-output', JSON.stringify(record));
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
   };
@@ -913,23 +1834,25 @@ function App() {
   };
 
 
-  const renderSelectedSource = (emptyText = 'Go to My Videos and select a source first.') => (
-    <div className="selected-source-box">
-      {selectedVideo ? (
-        <div className="selected-val">
-          <strong>{displayVideoName(selectedVideo)}</strong>
-          <span>{formatBytes(selectedVideo.sizeBytes)} · {selectedVideo.videoId}</span>
-        </div>
-      ) : (
-        <span className="placeholder">{emptyText}</span>
-      )}
-    </div>
-  );
-
   // ─── FEATURE PAGES ──────────────────────────────────────────────────────────
 
   if (page === 'compress') {
     const tool = navTools.find(t => t.key === 'compress')!;
+
+    const cloudProviders = [
+      { id: 'gdrive', label: 'Google Drive', subtitle: 'Google Workspace', color: '#4285F4', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' },
+      { id: 'dropbox', label: 'Dropbox', subtitle: 'Dropbox Cloud', color: '#0061FF', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4' },
+      { id: 'onedrive', label: 'OneDrive', subtitle: 'Microsoft 365', color: '#0078D4', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' },
+      { id: 'box', label: 'Box', subtitle: 'Box Personal/Enterprise', color: '#0061D5', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4' },
+    ];
+
+    // Find the matching video in allVideos for updated outputUrl
+    const liveOutputVideo = compressOutputRecord
+      ? allVideos.find(v => v.videoId === compressOutputRecord.videoId)
+      : null;
+    const outputUrl = liveOutputVideo?.outputUrl || compressOutputRecord?.outputUrl;
+    const outputStatus = liveOutputVideo?.status;
+
     return (
       <div className="app-shell droplane-bg">
         <FeaturePage
@@ -940,37 +1863,407 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={selectedVideo}
           onSelectVideo={setSelectedVideo}
+          activePlayUrl={activePlayUrl}
+          setActivePlayUrl={setActivePlayUrl}
+          activePlayResolution={activePlayResolution}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
+          fullWidth
         >
-          <div className="tool-form">
-            <div className="form-head">
-              <h3>Compress Video</h3>
-              <p>Set a target file size and queue compression against your selected source video.</p>
-            </div>
-            <div className="form-body">
-              <label className="input-group">
-                <span>Source Video</span>
-                {renderSelectedSource()}
-              </label>
-              <label className="input-group">
-                <span>Target Size</span>
-                <div className="size-slider-row">
-                  <input type="range" min="5" max="150" value={compressSize} onChange={e => setCompressSize(+e.target.value)} className="orange-slider-input" />
-                  <strong className="orange-stat">{compressSize} MB</strong>
+          {/* Cloud Import Modal */}
+          {showCloudModal && (
+            <div className="cloud-modal-backdrop" onClick={() => setShowCloudModal(false)}>
+              <div className="cloud-modal-panel" onClick={e => e.stopPropagation()}>
+                <div className="cloud-modal-header">
+                  <h3>Import from Cloud Storage</h3>
+                  <button className="cloud-modal-close" onClick={() => setShowCloudModal(false)}><X size={16} /></button>
                 </div>
-              </label>
-              <button className="btn-trigger salmon-color-btn" disabled={!selectedVideo} onClick={() => selectedVideo && handleCompress(selectedVideo.videoId)}>
-                <Gauge size={16} /> Start Compression
-              </button>
+                <p className="cloud-modal-desc">Select a cloud provider and authorize VideoForge to pull your video directly — no manual download needed.</p>
+                <div className="cloud-provider-grid">
+                  {cloudProviders.map(p => (
+                    <div
+                      key={p.id}
+                      className="cloud-provider-card-v2"
+                    >
+                      <div className="cloud-provider-header-v2">
+                        <div className="cloud-provider-info-v2">
+                          <span className="cloud-provider-label-v2">{p.label}</span>
+                          <span className="cloud-provider-subtitle-v2">{p.subtitle}</span>
+                        </div>
+                        <span className="cloud-provider-dot-v2" style={{ backgroundColor: p.color, color: p.color }} />
+                      </div>
+                      <div className="cloud-provider-status-v2">
+                        <span className="status-indicator-dot" />
+                        Ready to connect
+                      </div>
+                      <button
+                        className="cloud-provider-connect-btn"
+                        style={{ '--hover-bg': p.color } as React.CSSProperties}
+                        onClick={async () => {
+                          setShowCloudModal(false);
+                          setCompressSourceTab('upload');
+                          showStatus(`Connecting to ${p.label}... Select a file from your laptop.`, 'info');
+                          setTimeout(() => {
+                            document.getElementById('file-input')?.click();
+                          }, 150);
+                        }}
+                      >
+                        Connect & Import
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="cloud-modal-note">
+                  <ShieldCheck size={13} /> OAuth authorization is required. No passwords stored.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Share & QR Code Modal */}
+          {shareUrlForModal && (
+            <div className="cloud-modal-backdrop" onClick={() => setShareUrlForModal(null)}>
+              <div className="cloud-modal-panel share-qr-panel" onClick={e => e.stopPropagation()}>
+                <div className="cloud-modal-header">
+                  <h3>Share & QR Code</h3>
+                  <button className="cloud-modal-close" onClick={() => setShareUrlForModal(null)}><X size={16} /></button>
+                </div>
+                <p className="cloud-modal-desc">Copy the link or scan the QR code to instantly download the compressed video onto your smartphone.</p>
+                
+                <div className="share-url-container">
+                  <input type="text" className="text-input share-url-input" readOnly value={shareUrlForModal} />
+                  <button 
+                    className="btn-trigger copy-share-btn"
+                    onClick={() => {
+                      copyToClipboard(shareUrlForModal)
+                        .then(() => showStatus('Link copied to clipboard!', 'success'))
+                        .catch(() => showStatus('Failed to copy link', 'error'));
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+
+                <div className="qr-code-section">
+                  <div className="qr-code-wrapper">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrlForModal)}&color=0f172a&bgcolor=ffffff`}
+                      alt="QR Code"
+                      className="qr-code-image"
+                    />
+                  </div>
+                  <div className="qr-code-info">
+                    <h4>Scan to Download</h4>
+                    <p>Open your smartphone camera and point it at the QR code to instantly download the video file.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="compress-split-layout">
+            {/* ── LEFT PANEL: Inputs ── */}
+            <div className="compress-left-panel">
+              <div className="form-head" style={{ marginBottom: '20px' }}>
+                <h2 className="form-breathe-heading">Video Compressor</h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Reduce file size with target MB constraints, AI upscaling, or fetch directly from the web.
+                </p>
+              </div>
+
+              {/* Source Tabs */}
+              <div className="compress-source-tabs">
+                {([
+                  { id: 'upload' as CompressSourceTab, label: 'Upload File', icon: Upload },
+                  { id: 'cloud' as CompressSourceTab, label: 'Cloud Import', icon: CloudUpload },
+                  { id: 'url' as CompressSourceTab, label: 'Paste URL', icon: Link },
+                  { id: 'library' as CompressSourceTab, label: 'My Library', icon: FileVideo },
+                ] as {id: CompressSourceTab; label: string; icon: any}[]).map(tab => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      className={`compress-tab-btn ${compressSourceTab === tab.id ? 'active' : ''}`}
+                      onClick={() => {
+                        setCompressSourceTab(tab.id);
+                        if (tab.id === 'cloud') setShowCloudModal(true);
+                      }}
+                    >
+                      <Icon size={14} />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab Content */}
+              <div className="compress-tab-content">
+                {compressSourceTab === 'upload' && (
+                  <div className="compress-upload-zone">
+                    <UploadWidget onUploadComplete={async id => {
+                      showStatus('Upload complete! Video selected for compression.', 'success');
+                      try {
+                        const videos = await listVideos();
+                        setAllVideos(videos);
+                        const match = videos.find(v => v.videoId === id);
+                        if (match) {
+                          setSelectedVideo(match);
+                        }
+                      } catch (err) {
+                        loadVideos();
+                      }
+                      setCompressSourceTab('library');
+                    }} />
+                    <div className="presign-info-strip">
+                      <ShieldCheck size={13} style={{ color: 'var(--success-color)' }} />
+                      <span><strong>Pre-Signed URL Upload</strong> — Your browser uploads directly to S3. Our servers never touch your raw video file.</span>
+                    </div>
+                  </div>
+                )}
+
+                {compressSourceTab === 'cloud' && (
+                  <div className="compress-cloud-tab">
+                    <div className="cloud-tab-illustration">
+                      <CloudUpload size={40} style={{ color: 'var(--accent-color)', opacity: 0.7 }} />
+                      <h4>Connect a Cloud Provider</h4>
+                      <p>Pull videos from Google Drive, Dropbox, OneDrive, or Box using secure OAuth.</p>
+                      <button className="btn-trigger" onClick={() => setShowCloudModal(true)}>
+                        <CloudUpload size={14} /> Choose Cloud Provider
+                      </button>
+                    </div>
+                    {compressUrlInput && (
+                      <div className="cloud-url-preview">
+                        <Link size={12} /> Imported: <code>{compressUrlInput.slice(0, 60)}…</code>
+                        <button className="cloud-url-clear" onClick={() => setCompressUrlInput('')}><X size={11} /></button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {compressSourceTab === 'url' && (
+                  <div className="compress-url-tab">
+                    <label className="input-group">
+                      <span>Video URL (direct link or YouTube/Vimeo)</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                          type="url"
+                          className="text-input"
+                          placeholder="https://youtube.com/watch?v=... or direct .mp4 link"
+                          value={compressUrlInput}
+                          onChange={e => setCompressUrlInput(e.target.value)}
+                        />
+                        <button
+                          className="btn-trigger salmon-color-btn"
+                          style={{ whiteSpace: 'nowrap', padding: '0 16px' }}
+                          disabled={!compressUrlInput.trim() || compressIsProcessing}
+                          onClick={handleCompressFromUrl}
+                        >
+                          {compressIsProcessing ? <RefreshCw size={14} className="pulse-anim" /> : <Download size={14} />}
+                          Fetch & Compress
+                        </button>
+                      </div>
+                    </label>
+                    <div className="url-tab-note">
+                      <Globe2 size={12} /> Paste any public video link — we'll fetch, store, and compress it without requiring a manual download.
+                    </div>
+                  </div>
+                )}
+
+                {compressSourceTab === 'library' && (
+                  <div className="compress-library-tab">
+                    <label className="input-group">
+                      <span>Select from Your Library</span>
+                      <VideoSelector
+                        allVideos={allVideos}
+                        selectedVideo={selectedVideo}
+                        onSelectVideo={setSelectedVideo}
+                        placeholder="Search video to compress..."
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Common Settings */}
+              <div className="compress-settings-section">
+                <div className="compress-setting-row">
+                  <label className="input-group" style={{ marginBottom: 0 }}>
+                    <span>Target Output Size</span>
+                    <div className="size-slider-row">
+                      <input
+                        type="range"
+                        min={hasStartedCompression ? 25 : 5}
+                        max="500"
+                        value={compressSize}
+                        onChange={e => setCompressSize(Math.max(hasStartedCompression ? 25 : 5, +e.target.value))}
+                        className="orange-slider-input"
+                      />
+                      <strong className="orange-stat">{compressSize} MB</strong>
+                    </div>
+                  </label>
+                </div>
+
+                {/* AI Enhancement Toggle */}
+                <div className="ai-upscale-toggle-row">
+                  <div className="ai-toggle-info">
+                    <div className="ai-toggle-title">
+                      <Sparkles size={15} style={{ color: '#a855f7' }} />
+                      <strong>AI 4K Upscaling</strong>
+                      <span className="premium-tag">PRO</span>
+                    </div>
+                    <p className="ai-toggle-desc">Increase resolution (e.g. 1080p → 4K) while compressing. Perfect for restoring older footage.</p>
+                  </div>
+                  <label className="toggle-switch">
+                    <input type="checkbox" checked={compressAiUpscale} onChange={e => setCompressAiUpscale(e.target.checked)} />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+
+                <button
+                  className="btn-trigger salmon-color-btn compress-action-btn"
+                  disabled={
+                    compressIsProcessing ||
+                    (compressSourceTab !== 'url' && !selectedVideo) ||
+                    (compressSourceTab === 'url' && !compressUrlInput.trim())
+                  }
+                  onClick={() => {
+                    if (compressSourceTab === 'url') {
+                      handleCompressFromUrl();
+                    } else if (selectedVideo) {
+                      handleCompress(selectedVideo.videoId);
+                    }
+                  }}
+                >
+                  {compressIsProcessing
+                    ? <><RefreshCw size={16} className="pulse-anim" /> Processing…</>
+                    : <><Gauge size={16} /> Start Compression</>}
+                </button>
+              </div>
+
+              {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
+            </div>
+
+            {/* ── RIGHT PANEL: Output ── */}
+            <div className="compress-right-panel">
+              <div className="compress-output-header">
+                <strong>Output</strong>
+                <span className="compress-output-subtitle">Your compressed video appears here</span>
+              </div>
+
+              {!compressOutputRecord ? (
+                <div className="compress-output-empty">
+                  <div className="compress-output-empty-icon">
+                    <Gauge size={36} style={{ opacity: 0.3 }} />
+                  </div>
+                  <p>No output yet. Run a compression to see your result here.</p>
+                  <span>Results persist across page reloads until you compress a new video.</span>
+                </div>
+              ) : (
+                <div className="compress-output-card">
+                  <div className="coc-status-bar">
+                    {outputStatus === 'completed' ? (
+                      <span className="coc-badge completed">✓ Completed</span>
+                    ) : outputStatus === 'failed' ? (
+                      <span className="coc-badge failed">✗ Failed</span>
+                    ) : (
+                      <span className="coc-badge processing">
+                        <RefreshCw size={11} className="pulse-anim" /> Processing…
+                      </span>
+                    )}
+                    <button
+                      className="coc-clear-btn"
+                      onClick={() => {
+                        setCompressOutputRecord(null);
+                        localStorage.removeItem('vf-compress-output');
+                      }}
+                    >
+                      <X size={12} /> Clear
+                    </button>
+                  </div>
+
+                  <div className="coc-preview">
+                    {outputUrl ? (
+                      <video src={outputUrl} className="coc-preview-video" controls playsInline />
+                    ) : (
+                      <div className="coc-preview-placeholder">
+                        <FileVideo size={32} style={{ opacity: 0.4 }} />
+                        {outputStatus === 'processing' || outputStatus === 'queued' ? (
+                          <span>Compressing video… <RefreshCw size={12} className="pulse-anim" /></span>
+                        ) : (
+                          <span>Preview will appear when ready</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-actions">
+                    <button
+                      className="coc-action-btn download"
+                      disabled={!outputUrl}
+                      onClick={() => {
+                        const vidId = liveOutputVideo?.videoId || (outputUrl ? extractVideoIdFromUrl(outputUrl) : null);
+                        if (vidId) {
+                          handleDownloadVideo(vidId, liveOutputVideo?.originalName || compressOutputRecord?.originalName);
+                        }
+                      }}
+                      style={!outputUrl ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                    >
+                      <Download size={13} /> Download
+                    </button>
+                    <button
+                      className="coc-action-btn view"
+                      disabled={!outputUrl}
+                      onClick={() => outputUrl && setActivePlayUrl(outputUrl)}
+                    >
+                      <PlayCircle size={13} /> View
+                    </button>
+                    <button
+                      className="coc-action-btn share"
+                      disabled={!outputUrl}
+                      onClick={() => {
+                        if (outputUrl) {
+                          setShareUrlForModal(outputUrl);
+                        }
+                      }}
+                    >
+                      <Share2 size={13} /> Share
+                    </button>
+                  </div>
+
+                  <div className="coc-meta">
+                    <strong className="coc-name" title={compressOutputRecord.originalName}>
+                      {compressOutputRecord.originalName}
+                    </strong>
+                    <div className="coc-specs">
+                      <span>Target: {compressOutputRecord.targetSizeMB} MB</span>
+                      <span className="dot">•</span>
+                      <span>Original: {(compressOutputRecord.sizeBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                      {compressOutputRecord.upscale && <><span className="dot">•</span><span style={{ color: '#a855f7' }}>4K AI</span></>}
+                    </div>
+                    <div className="coc-date">Queued: {new Date(compressOutputRecord.completedAt).toLocaleString()}</div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
         </FeaturePage>
       </div>
     );
   }
 
+
+
   if (page === 'download') {
     const tool = navTools.find(t => t.key === 'download')!;
+    // Resolve live status from allVideos for the output record
+    const dlLiveVideo = downloadOutputRecord
+      ? allVideos.find(v => v.videoId === downloadOutputRecord.videoId)
+      : null;
+    const dlOutputUrl = dlLiveVideo?.outputUrl || downloadOutputRecord?.outputUrl;
+    const dlOutputStatus = dlLiveVideo?.status ?? (downloadOutputRecord ? 'queued' : undefined);
     return (
       <div className="app-shell droplane-bg">
         <FeaturePage
@@ -981,8 +2274,16 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={selectedVideo}
           onSelectVideo={setSelectedVideo}
+          activePlayUrl={activePlayUrl}
+          setActivePlayUrl={setActivePlayUrl}
+          activePlayResolution={activePlayResolution}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
         >
-          <div className="tool-form">
+          <div className="tool-form" style={{ maxWidth: '580px', margin: '0 auto' }}>
             <div className="form-head">
               <h3>Download from URL</h3>
               <p>Paste a public video URL. The worker fetches and queues it through your pipeline.</p>
@@ -998,6 +2299,19 @@ function App() {
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
+          <ServiceActionBar
+            outputUrl={dlOutputUrl}
+            outputStatus={dlOutputStatus}
+            videoName={downloadOutputRecord?.originalName}
+            onView={() => dlOutputUrl && setActivePlayUrl(dlOutputUrl)}
+            onShare={() => dlOutputUrl && copyToClipboard(dlOutputUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
+            onDownload={() => {
+              const vidId = dlLiveVideo?.videoId || (dlOutputUrl ? extractVideoIdFromUrl(dlOutputUrl) : null);
+              if (vidId) {
+                handleDownloadVideo(vidId, dlLiveVideo?.originalName || downloadOutputRecord?.originalName);
+              }
+            }}
+          />
         </FeaturePage>
       </div>
     );
@@ -1015,25 +2329,44 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={selectedVideo}
           onSelectVideo={setSelectedVideo}
+          activePlayUrl={activePlayUrl}
+          setActivePlayUrl={setActivePlayUrl}
+          activePlayResolution={activePlayResolution}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
         >
+          {/* Header outside the container box */}
+          <div className="form-head" style={{ marginBottom: '24px', paddingLeft: '8px' }}>
+            <h2 className="form-breathe-heading">Upload & HLS Transcode</h2>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+              Upload a raw file and produce HLS output for streaming and CDN delivery.
+            </p>
+          </div>
+
           <div className="tool-form">
-            <div className="form-head">
-              <h3>Upload & HLS Transcode</h3>
-              <p>Upload a raw file and produce HLS output for streaming and CDN delivery.</p>
-            </div>
             <div className="form-body">
               <UploadWidget onUploadComplete={async id => {
-                showStatus('Upload complete.', 'success');
-                try { const v = await getVideoStatus(id); setSelectedVideo(v); loadVideos(); } catch {}
+                showStatus('Upload complete. Please select it from the search bar below to transcode.', 'success');
+                try { loadVideos(); } catch {}
               }} />
+
+              <div style={{ margin: '16px 0', borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: '16px' }}>
+                <label className="input-group">
+                  <span>Or Select Video from Library</span>
+                  <VideoSelector 
+                    allVideos={allVideos} 
+                    selectedVideo={selectedVideo} 
+                    onSelectVideo={setSelectedVideo} 
+                    placeholder="Search video to transcode..."
+                  />
+                </label>
+              </div>
+
               {selectedVideo && (
-                <div className="op-sub-panel">
-                  <h4>Target Resolution</h4>
-                  <div className="resolution-pills">
-                    {(['4K', '1080p', '720p', '480p', '360p', '240p'] as const).map(r => (
-                      <button key={r} className={`pill-btn ${transcodeResolution === r ? 'active' : ''}`} onClick={() => setTranscodeResolution(r)}>{r}</button>
-                    ))}
-                  </div>
+                <div className="op-sub-panel" style={{ marginTop: '12px' }}>
                   <button className="btn-trigger violet" onClick={() => handleTranscode(selectedVideo.videoId)}>
                     <Video size={16} /> Start HLS Transcode
                   </button>
@@ -1042,6 +2375,26 @@ function App() {
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
+          {(() => {
+            const liveV = transcodeOutputRecord ? allVideos.find(v => v.videoId === transcodeOutputRecord.videoId) : null;
+            const tcUrl = liveV?.masterPlaylistUrl || liveV?.outputUrl || transcodeOutputRecord?.masterPlaylistUrl || transcodeOutputRecord?.outputUrl;
+            const tcStatus = liveV?.status ?? (transcodeOutputRecord ? 'queued' : undefined);
+            return (
+              <ServiceActionBar
+                outputUrl={tcUrl}
+                outputStatus={tcStatus}
+                videoName={transcodeOutputRecord?.originalName}
+                onView={() => tcUrl && setActivePlayUrl(tcUrl)}
+                onShare={() => tcUrl && copyToClipboard(tcUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
+                onDownload={() => {
+                  const vidId = liveV?.videoId || (tcUrl ? extractVideoIdFromUrl(tcUrl) : null);
+                  if (vidId) {
+                    handleDownloadVideo(vidId, liveV?.originalName || transcodeOutputRecord?.originalName);
+                  }
+                }}
+              />
+            );
+          })()}
         </FeaturePage>
       </div>
     );
@@ -1059,6 +2412,14 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={selectedVideo}
           onSelectVideo={setSelectedVideo}
+          activePlayUrl={activePlayUrl}
+          setActivePlayUrl={setActivePlayUrl}
+          activePlayResolution={activePlayResolution}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
         >
           <div className="tool-form">
             <div className="form-head">
@@ -1066,7 +2427,15 @@ function App() {
               <p>Convert formats, extract audio tracks, and trim clips from your selected source.</p>
             </div>
             <div className="form-body">
-              <label className="input-group"><span>Source Video</span>{renderSelectedSource('Choose a video from My Videos first.')}</label>
+              <label className="input-group">
+                <span>Source Video</span>
+                <VideoSelector 
+                  allVideos={allVideos} 
+                  selectedVideo={selectedVideo} 
+                  onSelectVideo={setSelectedVideo} 
+                  placeholder="Search video to process..."
+                />
+              </label>
               <div className="op-sub-panel">
                 <h4>Format Conversion</h4>
                 <div className="op-row">
@@ -1102,6 +2471,30 @@ function App() {
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
+          {(() => {
+            const latest = [convertOutputRecord, audioOutputRecord]
+              .filter(Boolean)
+              .sort((a, b) => new Date(b!.queuedAt).getTime() - new Date(a!.queuedAt).getTime())[0];
+            if (!latest) return null;
+            const liveV = allVideos.find(v => v.videoId === latest.videoId);
+            const opUrl = liveV?.outputUrl || latest.outputUrl;
+            const opStatus = liveV?.status ?? 'queued';
+            return (
+              <ServiceActionBar
+                outputUrl={opUrl}
+                outputStatus={opStatus}
+                videoName={latest.originalName}
+                onView={() => opUrl && setActivePlayUrl(opUrl)}
+                onShare={() => opUrl && copyToClipboard(opUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
+                onDownload={() => {
+                  const vidId = liveV?.videoId || (opUrl ? extractVideoIdFromUrl(opUrl) : null);
+                  if (vidId) {
+                    handleDownloadVideo(vidId, liveV?.originalName || latest.originalName);
+                  }
+                }}
+              />
+            );
+          })()}
         </FeaturePage>
       </div>
     );
@@ -1119,6 +2512,14 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={selectedVideo}
           onSelectVideo={setSelectedVideo}
+          activePlayUrl={activePlayUrl}
+          setActivePlayUrl={setActivePlayUrl}
+          activePlayResolution={activePlayResolution}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
         >
           <div className="tool-form">
             <div className="form-head">
@@ -1126,7 +2527,15 @@ function App() {
               <p>Extract specific segments from uploaded videos without quality loss.</p>
             </div>
             <div className="form-body">
-              <label className="input-group"><span>Source Video</span>{renderSelectedSource('Select a video from My Videos to clip first.')}</label>
+              <label className="input-group">
+                <span>Source Video</span>
+                <VideoSelector 
+                  allVideos={allVideos} 
+                  selectedVideo={selectedVideo} 
+                  onSelectVideo={setSelectedVideo} 
+                  placeholder="Search video to clip..."
+                />
+              </label>
               <div className="op-sub-panel">
                 <h4>Segment Timestamps</h4>
                 <div className="trim-inputs">
@@ -1140,6 +2549,26 @@ function App() {
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
+          {(() => {
+            const liveV = trimOutputRecord ? allVideos.find(v => v.videoId === trimOutputRecord.videoId) : null;
+            const trimUrl = liveV?.outputUrl || trimOutputRecord?.outputUrl;
+            const trimStatus = liveV?.status ?? (trimOutputRecord ? 'queued' : undefined);
+            return (
+              <ServiceActionBar
+                outputUrl={trimUrl}
+                outputStatus={trimStatus}
+                videoName={trimOutputRecord?.originalName}
+                onView={() => trimUrl && setActivePlayUrl(trimUrl)}
+                onShare={() => trimUrl && copyToClipboard(trimUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
+                onDownload={() => {
+                  const vidId = liveV?.videoId || (trimUrl ? extractVideoIdFromUrl(trimUrl) : null);
+                  if (vidId) {
+                    handleDownloadVideo(vidId, liveV?.originalName || trimOutputRecord?.originalName);
+                  }
+                }}
+              />
+            );
+          })()}
         </FeaturePage>
       </div>
     );
@@ -1147,8 +2576,30 @@ function App() {
 
   if (page === 'library') {
     const tool = navTools.find(t => t.key === 'library')!;
+    const libraryFilterTabs: { id: LibraryFilter; label: string; icon: React.ElementType; jobType: string }[] = [
+      { id: 'all',       label: 'All Videos',      icon: LayoutGrid,      jobType: 'all'       },
+      { id: 'compress',  label: 'Compressed',       icon: Minimize2,       jobType: 'compress'  },
+      { id: 'transcode', label: 'Transcoded',       icon: Clapperboard,    jobType: 'transcode' },
+      { id: 'convert',   label: 'Converted',        icon: SlidersHorizontal, jobType: 'convert' },
+      { id: 'audio',     label: 'Audio',            icon: AudioLines,      jobType: 'audio'     },
+      { id: 'trim',      label: 'Trimmed Clips',    icon: ScissorsIcon,    jobType: 'trim'      },
+      { id: 'download',  label: 'Downloaded',       icon: ArrowDownToLine, jobType: 'download'  },
+    ];
+
+    const filteredLibraryVideos = libraryFilter === 'all'
+      ? allVideos
+      : allVideos.filter((v: any) => {
+          if (v.jobType) return v.jobType === libraryFilter;
+          return false; // strict: only show when jobType matches
+        }).filter((v: any) => {
+          // respect section-hidden videos
+          const hidden = hiddenSectionVideos[v.videoId];
+          if (hidden && hidden.includes(libraryFilter)) return false;
+          return true;
+        });
+
     return (
-      <div className="app-shell droplane-bg">
+      <div className="app-shell droplane-bg library-page-shell">
         <FeaturePage
           tool={tool}
           history={allVideos}
@@ -1157,58 +2608,225 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={selectedVideo}
           onSelectVideo={setSelectedVideo}
+          activePlayUrl={activePlayUrl}
+          setActivePlayUrl={setActivePlayUrl}
+          activePlayResolution={activePlayResolution}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
+          fullWidth
         >
-          <div className="tool-form">
-            <div className="form-head">
-              <h3>My Videos</h3>
-              <p>All your uploads, downloads, and processed outputs. Click a video to select it for other tools.</p>
+          {/* Library Page Header */}
+          <div className="lib-page-header">
+            <div className="lib-page-header-text">
+              <h2 className="lib-page-title">My Videos</h2>
+              <p className="lib-page-subtitle">All your uploads, downloads, and processed outputs.</p>
             </div>
-            <div className="video-library-grid">
-              {allVideos.map(v => (
-                <div 
-                  key={v.videoId} 
-                  className={`video-card ${selectedVideo?.videoId === v.videoId ? 'active' : ''}`} 
-                  onClick={() => setSelectedVideo(v)}
-                >
-                  <div className="video-card-preview-container">
-                    {(v.outputUrl || v.masterPlaylistUrl) ? (
-                      <video 
-                        src={v.outputUrl || v.masterPlaylistUrl} 
-                        className="video-card-player" 
-                        muted 
-                        playsInline 
-                        preload="metadata" 
-                        onMouseOver={e => (e.target as HTMLVideoElement).play()} 
-                        onMouseOut={e => (e.target as HTMLVideoElement).pause()} 
-                      />
+            <div className="lib-page-stats">
+              <div className="lib-stat-chip">
+                <span className="lib-stat-num">{allVideos.length}</span>
+                <span className="lib-stat-label">Total</span>
+              </div>
+              <div className="lib-stat-chip">
+                <span className="lib-stat-num">{allVideos.filter((v: any) => v.status === 'completed').length}</span>
+                <span className="lib-stat-label">Ready</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Professional Flat Tab Navigation + divider */}
+          <div className="lib-tab-bar-wrapper">
+            <div className="lib-tab-nav" role="tablist">
+              {libraryFilterTabs.map(tab => {
+                const TabIcon = tab.icon;
+                const count = tab.id === 'all'
+                  ? allVideos.length
+                  : allVideos.filter((v: any) => v.jobType === tab.id).length;
+                return (
+                  <button
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={libraryFilter === tab.id}
+                    className={`lib-tab-btn ${libraryFilter === tab.id ? 'active' : ''}`}
+                    onClick={() => setLibraryFilter(tab.id)}
+                  >
+                    <TabIcon size={14} className="lib-tab-icon" />
+                    <span className="lib-tab-label">{tab.label}</span>
+                    {count > 0 && <span className="lib-tab-count">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <hr className="lib-tab-divider" />
+          </div>
+
+          {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
+
+          <div className="tool-form">
+            {filteredLibraryVideos.length === 0 ? (
+              <div className="library-empty-state">
+                <div className="library-empty-icon">
+                  <FileVideo size={48} style={{ opacity: 0.35 }} />
+                </div>
+                <h4>
+                  {libraryFilter === 'all' ? 'No Videos Yet' : `No ${libraryFilterTabs.find(p => p.id === libraryFilter)?.label} Videos`}
+                </h4>
+                <p>
+                  {libraryFilter === 'all'
+                    ? 'Upload or process a video to build your library.'
+                    : `You haven't used the ${libraryFilterTabs.find(p => p.id === libraryFilter)?.label.toLowerCase()} service yet. Head to that tool to get started!`}
+                </p>
+                {libraryFilter !== 'all' && (
+                  <button className="btn-trigger" style={{ marginTop: '16px' }} onClick={() => setLibraryFilter('all')}>
+                    View All Videos
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="video-library-grid">
+                {filteredLibraryVideos.map(v => (
+                  <div 
+                    key={v.videoId} 
+                    className={`video-card ${selectedVideo?.videoId === v.videoId ? 'active' : ''}`} 
+                    onClick={() => {
+                      setSelectedVideo(v);
+                      if (v.status === 'completed') {
+                        setActivePlayUrl(v.outputUrl || v.masterPlaylistUrl || null);
+                        setActivePlayResolution(undefined);
+                      }
+                    }}
+                  >
+                    <div className="video-card-main-content">
+                      <div className="video-card-preview-container">
+                        {(v.outputUrl && v.outputUrl.endsWith('.mp4')) ? (
+                          <video 
+                            src={v.outputUrl} 
+                            className="video-card-player" 
+                            muted 
+                            playsInline 
+                            preload="metadata" 
+                            onMouseOver={e => (e.target as HTMLVideoElement).play()} 
+                            onMouseOut={e => (e.target as HTMLVideoElement).pause()} 
+                          />
+                        ) : (
+                          <div className="video-card-placeholder-icon">
+                            <FileVideo size={40} className="placeholder-svg" />
+                          </div>
+                        )}
+                        <div className="video-card-overlay">
+                          <PlayCircle size={38} className="play-icon" />
+                        </div>
+                      </div>
+                      
+                      <div className="video-meta">
+                        <strong className="video-title" title={displayVideoName(v)}>{displayVideoName(v)}</strong>
+                        
+                        <div className="video-specs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {v.status === 'completed' ? (
+                              <span className="video-card-status-inline completed">Ready</span>
+                            ) : (
+                              <span className={`video-card-status-inline ${v.status}`}>
+                                {v.status === 'failed' ? 'Error' : 'Processing'}
+                              </span>
+                            )}
+                            <span>{v.sizeBytes && v.sizeBytes > 0 ? formatBytes(v.sizeBytes) : ''}</span>
+                          </div>
+                          <span>{formatRelativeTime(v.uploadedAt)}</span>
+                        </div>
+
+                        {v.status === 'completed' && (
+                          <div className="video-card-qualities-wrapper" onClick={(e) => e.stopPropagation()}>
+                            <span className="video-card-qualities-label">Available Resolutions:</span>
+                            <div className="video-card-qualities">
+                              {v.masterPlaylistUrl ? (
+                                // HLS Resolutions
+                                (['1080p', '720p', '480p', '360p'] as const).map((res) => (
+                                  <button
+                                    key={res}
+                                    className="card-quality-btn"
+                                    onClick={() => {
+                                      setActivePlayUrl(v.masterPlaylistUrl!);
+                                      setActivePlayResolution(res);
+                                    }}
+                                  >
+                                    {res}
+                                  </button>
+                                ))
+                              ) : (
+                                // MP4 Output
+                                <button
+                                  className="card-quality-btn primary"
+                                  onClick={() => {
+                                    setActivePlayUrl(v.outputUrl || v.masterPlaylistUrl || null);
+                                    setActivePlayResolution(undefined);
+                                  }}
+                                >
+                                  Play MP4
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {v.status === 'completed' ? (
+                      <div className="video-card-actions-sidebar" onClick={(e) => e.stopPropagation()}>
+                        <div className="card-share-dropdown-wrap">
+                          <ShareDropdown
+                            shareUrl={v.outputUrl || v.masterPlaylistUrl || ''}
+                            videoTitle={v.originalName}
+                            onCopied={() => showStatus('Link copied!', 'success')}
+                          />
+                        </div>
+                        <button 
+                          className="video-card-action-btn download"
+                          title="Download Video"
+                          onClick={() => {
+                            if (v.videoId) {
+                              handleDownloadVideo(v.videoId, v.originalName);
+                            }
+                          }}
+                        >
+                          <Download size={12} />
+                          <span>Download</span>
+                        </button>
+                        <button 
+                          className="video-card-action-btn delete-btn-row"
+                          title="Delete Video"
+                          onClick={async () => {
+                            if (window.confirm(`Are you sure you want to delete "${v.originalName || 'this video'}"?`)) {
+                              await handleDeleteVideo(v.videoId);
+                            }
+                          }}
+                        >
+                          <Trash2 size={12} />
+                          <span>Delete</span>
+                        </button>
+                      </div>
                     ) : (
-                      <div className="video-card-placeholder-icon">
-                        <FileVideo size={40} className="placeholder-svg" />
+                      <div className="video-card-actions-sidebar non-completed" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          className="video-card-action-btn delete-btn-row"
+                          title="Delete Video"
+                          onClick={async () => {
+                            if (window.confirm(`Are you sure you want to delete "${v.originalName || 'this video'}"?`)) {
+                              await handleDeleteVideo(v.videoId);
+                            }
+                          }}
+                        >
+                          <Trash2 size={12} />
+                          <span>Delete</span>
+                        </button>
                       </div>
                     )}
-                    <div className="video-card-overlay">
-                      <PlayCircle size={38} className="play-icon" />
-                    </div>
-                    {v.status && (
-                      <span className={`video-card-status-badge ${v.status}`}>
-                        {v.status === 'completed' ? 'Ready' : v.status === 'failed' ? 'Error' : 'Processing'}
-                      </span>
-                    )}
                   </div>
-                  
-                  <div className="video-meta">
-                    <strong className="video-title" title={displayVideoName(v)}>{displayVideoName(v)}</strong>
-                    <div className="video-specs">
-                      <span>{v.status === 'completed' ? '1080p' : '---'}</span>
-                      <span className="dot">•</span>
-                      <span>{formatBytes(v.sizeBytes)}</span>
-                      <span className="dot">•</span>
-                      <span>{new Date(v.uploadedAt).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </FeaturePage>
       </div>
@@ -1314,6 +2932,11 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={null}
           onSelectVideo={() => {}}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
         >
           <div className="settings-sidebar-layout animate-slide-up">
             {/* Sidebar List */}
@@ -1430,39 +3053,108 @@ function App() {
                             onClick={() => { setSelectedVideo(v); goHome(); }}
                             style={{ cursor: 'pointer' }}
                           >
-                            <div className="video-card-preview-container">
-                              {(v.outputUrl || v.masterPlaylistUrl) ? (
-                                <video 
-                                  src={v.outputUrl || v.masterPlaylistUrl} 
-                                  className="video-card-player" 
-                                  muted 
-                                  playsInline 
-                                  preload="metadata" 
-                                  onMouseOver={e => (e.target as HTMLVideoElement).play()} 
-                                  onMouseOut={e => (e.target as HTMLVideoElement).pause()} 
-                                />
-                              ) : (
-                                <div className="video-card-placeholder-icon">
-                                  <FileVideo size={36} className="placeholder-svg" />
+                            <div className="video-card-main-content">
+                              <div className="video-card-preview-container">
+                                {(v.outputUrl || v.masterPlaylistUrl) ? (
+                                  <video 
+                                    src={v.outputUrl || v.masterPlaylistUrl} 
+                                    className="video-card-player" 
+                                    muted 
+                                    playsInline 
+                                    preload="metadata" 
+                                    onMouseOver={e => (e.target as HTMLVideoElement).play()} 
+                                    onMouseOut={e => (e.target as HTMLVideoElement).pause()} 
+                                  />
+                                ) : (
+                                  <div className="video-card-placeholder-icon">
+                                    <FileVideo size={36} className="placeholder-svg" />
+                                  </div>
+                                )}
+                                <div className="video-card-overlay">
+                                  <PlayCircle size={32} className="play-icon" />
                                 </div>
-                              )}
-                              <div className="video-card-overlay">
-                                <PlayCircle size={32} className="play-icon" />
                               </div>
-                              {v.status && (
-                                <span className={`video-card-status-badge ${v.status}`}>
-                                  {v.status === 'completed' ? 'Ready' : v.status === 'failed' ? 'Error' : 'Processing'}
-                                </span>
-                              )}
-                            </div>
-                            <div className="video-meta">
-                              <strong className="video-title" style={{ fontSize: '13px' }} title={displayVideoName(v)}>{displayVideoName(v)}</strong>
-                              <div className="video-specs" style={{ fontSize: '11px' }}>
-                                <span>{v.status === 'completed' ? '1080p' : '---'}</span>
-                                <span className="dot">•</span>
-                                <span>{formatBytes(v.sizeBytes)}</span>
+                              <div className="video-meta">
+                                <strong className="video-title" style={{ fontSize: '13px' }} title={displayVideoName(v)}>{displayVideoName(v)}</strong>
+                                
+                                <div className="video-specs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', fontSize: '11px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {v.status === 'completed' ? (
+                                      <span className="video-card-status-inline completed" style={{ fontSize: '9px', padding: '2px 5px' }}>Ready</span>
+                                    ) : (
+                                      <span className={`video-card-status-inline ${v.status}`} style={{ fontSize: '9px', padding: '2px 5px' }}>
+                                        {v.status === 'failed' ? 'Error' : 'Processing'}
+                                      </span>
+                                    )}
+                                    <span>{v.sizeBytes && v.sizeBytes > 0 ? formatBytes(v.sizeBytes) : ''}</span>
+                                  </div>
+                                  <span>{formatRelativeTime(v.uploadedAt)}</span>
+                                </div>
                               </div>
                             </div>
+
+                            {v.status === 'completed' ? (
+                              <div className="video-card-actions-sidebar" onClick={(e) => e.stopPropagation()}>
+                                <button 
+                                  className="video-card-action-btn share"
+                                  title="Copy Share Link"
+                                  style={{ padding: '4px 8px', fontSize: '10px' }}
+                                  onClick={() => {
+                                    const shareUrl = v.outputUrl || v.masterPlaylistUrl;
+                                    if (shareUrl) {
+                                      copyToClipboard(shareUrl)
+                                        .then(() => showStatus('Link copied to clipboard!', 'success'))
+                                        .catch(() => showStatus('Failed to copy link', 'error'));
+                                    }
+                                  }}
+                                >
+                                  <Share2 size={10} />
+                                  <span>Share</span>
+                                </button>
+                                <button 
+                                  className="video-card-action-btn download"
+                                  title="Download Video"
+                                  style={{ padding: '4px 8px', fontSize: '10px' }}
+                                  onClick={() => {
+                                    if (v.videoId) {
+                                      handleDownloadVideo(v.videoId, v.originalName);
+                                    }
+                                  }}
+                                >
+                                  <Download size={10} />
+                                  <span>Download</span>
+                                </button>
+                                <button 
+                                  className="video-card-action-btn delete-btn-row"
+                                  title="Delete Video"
+                                  style={{ padding: '4px 8px', fontSize: '10px' }}
+                                  onClick={async () => {
+                                    if (window.confirm(`Are you sure you want to delete "${v.originalName || 'this video'}"?`)) {
+                                      await handleDeleteVideo(v.videoId);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 size={10} />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="video-card-actions-sidebar non-completed" onClick={(e) => e.stopPropagation()}>
+                                <button 
+                                  className="video-card-action-btn delete-btn-row"
+                                  title="Delete Video"
+                                  style={{ padding: '4px 8px', fontSize: '10px' }}
+                                  onClick={async () => {
+                                    if (window.confirm(`Are you sure you want to delete "${v.originalName || 'this video'}"?`)) {
+                                      await handleDeleteVideo(v.videoId);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 size={10} />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -1611,6 +3303,11 @@ function App() {
           onRefresh={loadVideos}
           selectedVideo={null}
           onSelectVideo={() => {}}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
         >
           <div className="tool-form">
             <div className="form-head"><h3>My Profile</h3><p>Your account identity and session details.</p></div>
@@ -2119,6 +3816,8 @@ function App() {
       {page === 'feedback' && (
         <FeedbackUs onClose={() => setPage('home')} profile={profile} />
       )}
+
+
 
       {/* SVG gooey filter for header blob-buttons */}
       <svg xmlns="http://www.w3.org/2000/svg" version="1.1" style={{ display: 'none' }}>
