@@ -5,7 +5,5 @@ resources:
   - redis.yaml
   - api.yaml
   - worker.yaml
-  - prometheus.yaml
-  - grafana.yaml
   - ingress.yaml
   - scaledobject.yaml

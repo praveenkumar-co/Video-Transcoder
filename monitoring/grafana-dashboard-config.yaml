@@ -1,0 +1,248 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-config
+  namespace: default
+data:
+  video-transcoder-dashboard.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "title": "API Request Rate (req/s)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "id": 1,
+          "targets": [
+            {
+              "expr": "sum(rate(vp_http_requests_total[1m])) by (method, route)",
+              "legendFormat": "{{method}} {{route}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+              "unit": "reqps"
+            }
+          }
+        },
+        {
+          "title": "API HTTP Error Rate (%)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "id": 2,
+          "targets": [
+            {
+              "expr": "sum(rate(vp_http_requests_total{status_code=~\"[45]..\"}[1m])) / sum(rate(vp_http_requests_total[1m])) * 100",
+              "legendFormat": "Error Rate %",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line" },
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "API Response Latency (p50 / p95)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 3,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(vp_http_request_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95 Latency",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(vp_http_request_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50 (Median) Latency",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "title": "Transcoding Queue Depth",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "id": 4,
+          "targets": [
+            {
+              "expr": "vp_queue_depth",
+              "legendFormat": "Queue Depth",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line" },
+              "unit": "none",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 20 },
+                  { "color": "red", "value": 100 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "Transcoding Job Rate (succeeded vs failed)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+          "id": 5,
+          "targets": [
+            {
+              "expr": "sum(rate(vp_transcoder_jobs_completed_total[1m]))",
+              "legendFormat": "Completed",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(vp_transcoder_jobs_failed_total[1m]))",
+              "legendFormat": "Failed",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line" },
+              "unit": "ops"
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Failed" },
+                "properties": [
+                  { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "Average Transcoding Duration (seconds)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+          "id": 6,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(vp_transcoder_job_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95 Job Duration",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(vp_transcoder_job_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50 Job Duration",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "lineInterpolation": "smooth" },
+              "unit": "s"
+            }
+          }
+        },
+        {
+          "title": "Worker Uptime",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+          "id": 7,
+          "targets": [
+            {
+              "expr": "up{job=\"transcoder-worker\"}",
+              "legendFormat": "Worker",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "API Uptime",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 24 },
+          "id": 8,
+          "targets": [
+            {
+              "expr": "up{job=\"api\"}",
+              "legendFormat": "API",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "S3 Upload Success Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 4, "w": 12, "x": 12, "y": 24 },
+          "id": 9,
+          "targets": [
+            {
+              "expr": "sum(rate(vp_s3_uploads_total{status=\"success\"}[5m]))",
+              "legendFormat": "S3 Uploads/s",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          }
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["video-transcoder", "sre"],
+      "title": "Video Transcoder — SRE Dashboard",
+      "timezone": "browser",
+      "weekStart": ""
+    }

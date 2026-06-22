@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: default
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - "/etc/prometheus/alert-rules.yaml"
+
+    scrape_configs:
+      # ── Kubernetes annotation-based auto-discovery ───────────────────────────
+      # Any pod with prometheus.io/scrape: "true" will be scraped automatically.
+      # Used by api (port 4000) and transcoder-worker (port 9091).
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: "true"
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          target_label: __address__
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: replace
+          target_label: app
+
+      # ── Static scrape targets (explicit fallback) ────────────────────────────
+      - job_name: 'api'
+        static_configs:
+          - targets: ['api:4000']
+            labels:
+              app: api
+
+      - job_name: 'transcoder-worker'
+        static_configs:
+          - targets: ['transcoder-worker:9091']
+            labels:
+              app: transcoder-worker
+
+  alert-rules.yaml: |
+    groups:
+      - name: video-transcoder-alerts
+        rules:
+
+          # ── Infrastructure ───────────────────────────────────────────────────
+
+          - alert: APIInstanceDown
+            expr: up{job="api"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "API pod is down"
+              description: "The Video Transcoder API has been unreachable for more than 1 minute."
+
+          - alert: WorkerDown
+            expr: up{job="transcoder-worker"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Transcoder worker is down"
+              description: "The transcoder worker has been unreachable for more than 1 minute. Videos will not be processed."
+
+          # ── Queue Health ─────────────────────────────────────────────────────
+
+          - alert: QueueDepthHigh
+            expr: vp_queue_depth > 20
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Transcoding queue depth is high"
+              description: "Queue depth is {{ $value }} (above 20) for 2 minutes. Workers may be overwhelmed."
+
+          - alert: QueueDepthCritical
+            expr: vp_queue_depth > 100
+            for: 3m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Transcoding queue is critically backed up"
+              description: "Queue depth is {{ $value }} (above 100). Immediate attention required."
+
+          # ── Job Failures ─────────────────────────────────────────────────────
+
+          - alert: JobFailureRateHigh
+            expr: rate(vp_transcoder_jobs_failed_total[5m]) > 0.1
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "High transcoding job failure rate"
+              description: "More than 10% of transcoding jobs are failing per second."
+
+          # ── API Performance ──────────────────────────────────────────────────
+
+          - alert: HighHTTP5xxErrorRate
+            expr: |
+              sum(rate(vp_http_requests_total{status_code=~"5.."}[1m]))
+              /
+              sum(rate(vp_http_requests_total[1m])) * 100 > 5
+            for: 1m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High HTTP 5xx error rate"
+              description: "HTTP 5xx error rate is {{ $value | printf \"%.2f\" }}% (above 5%)."
+
+          - alert: HighAPILatency
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(vp_http_request_duration_seconds_bucket[5m])) by (le)
+              ) > 1.0
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High API response latency"
+              description: "p95 API latency is {{ $value | printf \"%.2f\" }}s (above 1s)."
