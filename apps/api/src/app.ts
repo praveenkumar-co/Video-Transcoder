@@ -27,19 +27,20 @@ const corsOrigins = env.CORS_ORIGIN
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || !corsOrigins?.length || corsOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
+const corsMiddleware = cors({
+  origin: (origin, callback) => {
+    if (!origin || !corsOrigins?.length || corsOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
 
-      callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-  })
-);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+});
+
+app.use(corsMiddleware);
+app.options('*', corsMiddleware);
 app.use(express.json());
 app.use((req, res, next) => {
   const end = httpRequestDuration.startTimer();
