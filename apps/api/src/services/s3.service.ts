@@ -94,10 +94,21 @@ export async function generatePresignedDownloadUrl(
   key: string,
   fileName: string
 ): Promise<string> {
+  const lastDot = key.lastIndexOf('.');
+  const ext = lastDot !== -1 ? key.substring(lastDot) : '.mp4';
+  let finalFileName = fileName;
+  if (ext && !fileName.toLowerCase().endsWith(ext.toLowerCase())) {
+    finalFileName = `${fileName}${ext}`;
+  }
+
+  // Clean filename for standard filename header (ASCII fallback)
+  const safeAsciiName = finalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const encodedName = encodeURIComponent(finalFileName);
+
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: key,
-    ResponseContentDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`,
+    ResponseContentDisposition: `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`,
   });
 
   return getSignedUrl(s3Client, command, {
