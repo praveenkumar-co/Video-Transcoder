@@ -63,6 +63,7 @@ import {
   Scissors as ScissorsIcon,
   ArrowDownToLine,
   Check,
+  Lock,
 } from 'lucide-react';
 import apiIconUrl from './icons/api.svg?url';
 import audioIconUrl from './icons/audio-svgrepo-com.svg?url';
@@ -983,6 +984,8 @@ function App() {
   const [activePlayUrl, _setActivePlayUrl] = useState<string | null>(null);
   const [activePlayResolution, setActivePlayResolution] = useState<string | undefined>(undefined);
   const [activePlayVideo, setActivePlayVideo] = useState<VideoMetaData | null>(null);
+  const [showDownloadOptions, setShowDownloadOptions] = useState(false);
+  const [showShareOptions, setShowShareOptions] = useState(false);
   const [hiddenSectionVideos, setHiddenSectionVideos] = useState<Record<string, string[]>>(() => {
     try {
       const stored = localStorage.getItem('vf-hidden-section-videos');
@@ -1016,7 +1019,10 @@ function App() {
 
   const [compressSize, setCompressSize] = useState(25);
   const [downloadUrl, setDownloadUrl] = useState('');
-  const [transcodeResolution, setTranscodeResolution] = useState<'4K' | '1080p' | '720p' | '480p' | '360p' | '240p'>('1080p');
+  const [transcodeResolution, setTranscodeResolution] = useState<string>('Auto');
+  const [transcodeSourceTab, setTranscodeSourceTab] = useState<'upload' | 'cloud' | 'url' | 'library'>('upload');
+  const [transcodeUrlInput, setTranscodeUrlInput] = useState('');
+  const [transcodeIsProcessing, setTranscodeIsProcessing] = useState(false);
   const [convertFormat, setConvertFormat] = useState<'mp4' | 'webm' | 'mov' | 'avi' | 'mkv'>('mp4');
   const [audioFormat, setAudioFormat] = useState<'mp3' | 'wav' | 'aac'>('mp3');
   const [trimStart, setTrimStart] = useState(0);
@@ -1030,6 +1036,8 @@ function App() {
   const [compressAiUpscale, setCompressAiUpscale] = useState(false);
   const [compressIsProcessing, setCompressIsProcessing] = useState(false);
   const [showCloudModal, setShowCloudModal] = useState(false);
+  const [showTcDownloadOptions, setShowTcDownloadOptions] = useState(false);
+  const [showTcShareOptions, setShowTcShareOptions] = useState(false);
   const [shareUrlForModal, setShareUrlForModal] = useState<string | null>(null);
   const [compressOutputRecord, setCompressOutputRecord] = useState<CompressOutputRecord | null>(() => {
     try { const s = localStorage.getItem('vf-compress-output'); return s ? JSON.parse(s) : null; } catch { return null; }
@@ -1524,19 +1532,37 @@ function App() {
     showStatus('Preparing secure download...', 'info');
     try {
       const downloadUrl = await getVideoDownloadUrlAPI(videoId, resolution);
+      showStatus('Downloading file... Please wait.', 'info');
+      
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error('Failed to download file from secure storage');
+      
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      if (originalName) {
-        const cleanName = originalName.replace(/[^a-zA-Z0-9_-]/g, '_');
-        link.download = `${cleanName}.mp4`;
-      }
+      link.href = blobUrl;
+      
+      const cleanName = originalName 
+        ? originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, '_')
+        : 'video';
+      const resSuffix = resolution && resolution !== 'auto' ? `_${resolution}` : '';
+      link.download = `${cleanName}${resSuffix}.mp4`;
+      
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      showStatus('Download started!', 'success');
+      URL.revokeObjectURL(blobUrl);
+      showStatus('Download completed!', 'success');
     } catch (err: any) {
-      console.error('Download failed:', err);
-      showStatus(err.message || 'Failed to prepare download', 'error');
+      console.error('Secure Blob download failed, trying direct link:', err);
+      try {
+        const directUrl = await getVideoDownloadUrlAPI(videoId, resolution);
+        window.open(directUrl, '_blank');
+        showStatus('Opening video link in new tab...', 'info');
+      } catch (fallbackErr) {
+        showStatus(err.message || 'Failed to prepare download', 'error');
+      }
     }
   };
 
@@ -1651,8 +1677,10 @@ function App() {
 
   const handleTranscode = async (videoId: string) => {
     try {
+      setTranscodeIsProcessing(true);
       showStatus('Queuing HLS transcode…', 'info');
-      const result = await triggerTranscode(videoId, transcodeResolution);
+      const resParam = transcodeResolution === 'Auto' ? undefined : transcodeResolution;
+      const result = await triggerTranscode(videoId, resParam);
       showStatus('Transcode queued! Output will appear when ready.', 'success');
       const record: ServiceOutputRecord = {
         videoId: result?.videoId ?? videoId,
@@ -1667,6 +1695,29 @@ function App() {
       localStorage.setItem('vf-transcode-output', JSON.stringify(record));
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
+    finally { setTranscodeIsProcessing(false); }
+  };
+
+  const handleTranscodeFromUrl = async () => {
+    if (!transcodeUrlInput.trim()) { showStatus('Please enter a video URL.', 'error'); return; }
+    try {
+      setTranscodeIsProcessing(true);
+      showStatus('Fetching video from URL and queuing transcode…', 'info');
+      const result = await triggerDownloadUrl(transcodeUrlInput.trim());
+      showStatus('Video fetched and HLS transcode queued! Output will appear when ready.', 'success');
+      const record: ServiceOutputRecord = {
+        videoId: result?.videoId ?? 'pending',
+        originalName: transcodeUrlInput.split('/').pop() || 'Downloaded Video',
+        masterPlaylistUrl: result?.masterPlaylistUrl,
+        jobType: 'download-url',
+        queuedAt: new Date().toISOString(),
+      };
+      setTranscodeOutputRecord(record);
+      localStorage.setItem('vf-transcode-output', JSON.stringify(record));
+      setTranscodeUrlInput('');
+      loadVideos();
+    } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
+    finally { setTranscodeIsProcessing(false); }
   };
 
   const handleConvert = async (videoId: string) => {
@@ -2262,8 +2313,54 @@ function App() {
     const dlLiveVideo = downloadOutputRecord
       ? allVideos.find(v => v.videoId === downloadOutputRecord.videoId)
       : null;
-    const dlOutputUrl = dlLiveVideo?.outputUrl || downloadOutputRecord?.outputUrl;
+    const dlOutputUrl = dlLiveVideo?.masterPlaylistUrl || dlLiveVideo?.outputUrl || downloadOutputRecord?.outputUrl;
     const dlOutputStatus = dlLiveVideo?.status ?? (downloadOutputRecord ? 'queued' : undefined);
+
+    const isCompleted = dlOutputStatus === 'completed';
+    const isProcessing = dlOutputStatus === 'processing' || dlOutputStatus === 'queued';
+    const isFailed = dlOutputStatus === 'failed';
+    const hasJob = !!downloadOutputRecord;
+
+    const handleShareChannel = (channel: 'whatsapp' | 'email' | 'twitter' | 'copy') => {
+      if (!dlOutputUrl) return;
+      const shareData = {
+        title: dlLiveVideo?.originalName || downloadOutputRecord?.originalName || 'Shared Video',
+        text: 'Check out this video:',
+        url: dlOutputUrl
+      };
+
+      if (channel === 'copy') {
+        copyToClipboard(dlOutputUrl)
+          .then(() => showStatus('Link copied to clipboard!', 'success'))
+          .catch(() => showStatus('Failed to copy link', 'error'));
+        return;
+      }
+
+      if (navigator.share) {
+        navigator.share(shareData)
+          .then(() => showStatus('Shared successfully!', 'success'))
+          .catch((err) => {
+            if (err.name !== 'AbortError') {
+              fallbackShare(channel);
+            }
+          });
+      } else {
+        fallbackShare(channel);
+      }
+    };
+
+    const fallbackShare = (channel: 'whatsapp' | 'email' | 'twitter') => {
+      if (!dlOutputUrl) return;
+      const title = dlLiveVideo?.originalName || downloadOutputRecord?.originalName || 'Shared Video';
+      if (channel === 'whatsapp') {
+        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(title + ': ' + dlOutputUrl)}`, '_blank');
+      } else if (channel === 'email') {
+        window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent('Here is the link to the video: ' + dlOutputUrl)}`, '_self');
+      } else if (channel === 'twitter') {
+        window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(dlOutputUrl)}&text=${encodeURIComponent('Check out ' + title)}`, '_blank');
+      }
+    };
+
     return (
       <div className="app-shell droplane-bg">
         <FeaturePage
@@ -2282,36 +2379,192 @@ function App() {
           onDeleteVideo={handleDeleteVideo}
           onDownloadVideo={handleDownloadVideo}
           showStatus={showStatus}
+          fullWidth={true}
         >
-          <div className="tool-form" style={{ maxWidth: '580px', margin: '0 auto' }}>
-            <div className="form-head">
-              <h3>Download from URL</h3>
-              <p>Paste a public video URL. The worker fetches and queues it through your pipeline.</p>
+          <div className="download-page-layout">
+            {/* Left Column: Download URL Form */}
+            <div className="download-left-col">
+              <div className="tool-form download-url-form">
+                <div className="form-head">
+                  <h3>Download from URL</h3>
+                  <p>Paste a public video URL. The worker fetches and queues it through your pipeline.</p>
+                </div>
+                <div className="form-body">
+                  <label className="input-group">
+                    <span>Public Video URL</span>
+                    <input
+                      className="text-input"
+                      type="url"
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={downloadUrl}
+                      onChange={e => setDownloadUrl(e.target.value)}
+                    />
+                  </label>
+                  <button className="btn-fetch-video" onClick={handleDownload}>
+                    <Download size={15} /> Fetch Video
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="form-body">
-              <label className="input-group">
-                <span>Public Video URL</span>
-                <input className="text-input" type="url" placeholder="https://www.youtube.com/watch?v=..." value={downloadUrl} onChange={e => setDownloadUrl(e.target.value)} />
-              </label>
-              <button className="btn-trigger success" onClick={handleDownload}>
-                <Download size={16} /> Fetch Video
-              </button>
+
+            {/* Right Column: Actions / Status Column */}
+            <div className="download-right-col">
+              {/* Status Card */}
+              <div className={`download-status-card ${isCompleted ? 'completed' : isProcessing ? 'processing' : isFailed ? 'failed' : 'idle'}`}>
+                <div className="status-header">
+                  {isCompleted ? (
+                    <div className="status-indicator">
+                      <span className="green-tick-circle">
+                        <Check size={16} strokeWidth={3} />
+                      </span>
+                      <span className="status-text">Ready</span>
+                    </div>
+                  ) : isProcessing ? (
+                    <div className="status-indicator">
+                      <RefreshCw size={16} className="pulse-anim text-orange" />
+                      <span className="status-text text-orange">Processing video...</span>
+                    </div>
+                  ) : isFailed ? (
+                    <div className="status-indicator">
+                      <X size={16} className="text-red" />
+                      <span className="status-text text-red">Processing failed</span>
+                    </div>
+                  ) : (
+                    <div className="status-indicator">
+                      <Lock size={16} />
+                      <span className="status-text">Run a job to unlock actions</span>
+                    </div>
+                  )}
+                </div>
+                {dlLiveVideo?.originalName && (
+                  <div className="status-video-title">
+                    {dlLiveVideo.originalName}
+                  </div>
+                )}
+              </div>
+
+              {/* Vertical Action Column */}
+              <div className="download-actions-stack">
+                {/* VIEW BUTTON */}
+                <button
+                  className={`download-action-btn view-btn ${isCompleted ? 'active' : 'disabled'}`}
+                  disabled={!isCompleted}
+                  onClick={() => {
+                    if (isCompleted && dlOutputUrl) {
+                      setActivePlayUrl(dlOutputUrl);
+                      setActivePlayVideo(dlLiveVideo || null);
+                    }
+                  }}
+                >
+                  <PlayCircle size={18} />
+                  <span>View Video</span>
+                </button>
+
+                {/* DOWNLOAD BUTTON */}
+                <div className="download-action-group">
+                  <button
+                    className={`download-action-btn download-btn ${isCompleted ? 'active' : 'disabled'} ${showDownloadOptions ? 'expanded' : ''}`}
+                    disabled={!isCompleted}
+                    onClick={() => {
+                      if (isCompleted) {
+                        setShowDownloadOptions(!showDownloadOptions);
+                        setShowShareOptions(false);
+                      }
+                    }}
+                  >
+                    <Download size={18} />
+                    <span>Download Options</span>
+                    <ChevronDown size={16} className={`arrow-icon ${showDownloadOptions ? 'rotated' : ''}`} />
+                  </button>
+                  {isCompleted && showDownloadOptions && (
+                    <div className="download-sub-panel animate-slide-down">
+                      <div className="sub-panel-title">Select Quality</div>
+                      <div className="resolution-options-list">
+                        {[
+                          { resolution: '1080p', label: '1080p (Full HD)' },
+                          { resolution: '720p', label: '720p (HD)' },
+                          { resolution: '480p', label: '480p (SD)' },
+                          { resolution: '360p', label: '360p (Low)' },
+                          { resolution: 'auto', label: 'Original Quality' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.resolution}
+                            className="resolution-item-btn"
+                            onClick={() => {
+                              if (dlLiveVideo?.videoId) {
+                                handleDownloadVideo(
+                                  dlLiveVideo.videoId,
+                                  dlLiveVideo.originalName || downloadOutputRecord?.originalName,
+                                  opt.resolution
+                                );
+                              }
+                            }}
+                          >
+                            <ArrowDownToLine size={14} />
+                            <span>{opt.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* SHARE BUTTON */}
+                <div className="download-action-group">
+                  <button
+                    className={`download-action-btn share-btn ${isCompleted ? 'active' : 'disabled'} ${showShareOptions ? 'expanded' : ''}`}
+                    disabled={!isCompleted}
+                    onClick={() => {
+                      if (isCompleted) {
+                        setShowShareOptions(!showShareOptions);
+                        setShowDownloadOptions(false);
+                      }
+                    }}
+                  >
+                    <Share2 size={18} />
+                    <span>Share Video</span>
+                    <ChevronDown size={16} className={`arrow-icon ${showShareOptions ? 'rotated' : ''}`} />
+                  </button>
+                  {isCompleted && showShareOptions && (
+                    <div className="download-sub-panel animate-slide-down">
+                      <div className="sub-panel-title">Share Via</div>
+                      <div className="share-channels-list">
+                        <button
+                          className="share-item-btn whatsapp"
+                          onClick={() => handleShareChannel('whatsapp')}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.725 1.45 5.502.003 9.961-4.45 9.964-9.948.002-2.661-1.025-5.163-2.894-7.036-1.87-1.873-4.364-2.903-7.027-2.904-5.509 0-9.97 4.458-9.973 9.956-.001 1.705.474 3.371 1.378 4.821l-.958 3.498 3.593-.942zm12.33-6.24c-.302-.152-1.79-.883-2.067-.984-.278-.102-.48-.152-.68.152-.2.304-.775.984-.95 1.186-.175.203-.35.229-.652.077-.302-.152-1.276-.47-2.43-1.499-.899-.802-1.505-1.792-1.68-2.097-.175-.304-.019-.469.133-.62.136-.135.302-.354.454-.53.152-.177.203-.304.304-.508.102-.203.05-.381-.025-.533-.075-.152-.68-1.642-.932-2.25-.246-.592-.497-.51-.68-.52-.176-.01-.377-.01-.58-.01-.202 0-.53.076-.807.381-.277.304-1.057 1.034-1.057 2.522 0 1.488 1.083 2.923 1.233 3.126.151.203 2.133 3.257 5.168 4.566.72.311 1.282.497 1.72.637.723.23 1.382.197 1.902.12.58-.087 1.79-.731 2.042-1.44.252-.708.252-1.314.177-1.44-.075-.127-.278-.203-.58-.354z"/></svg>
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          className="share-item-btn email"
+                          onClick={() => handleShareChannel('email')}
+                        >
+                          <Mail size={14} />
+                          <span>Email</span>
+                        </button>
+                        <button
+                          className="share-item-btn twitter"
+                          onClick={() => handleShareChannel('twitter')}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                          <span>Twitter / X</span>
+                        </button>
+                        <button
+                          className="share-item-btn copy"
+                          onClick={() => handleShareChannel('copy')}
+                        >
+                          <Link size={14} />
+                          <span>Copy Link</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
-          <ServiceActionBar
-            outputUrl={dlOutputUrl}
-            outputStatus={dlOutputStatus}
-            videoName={downloadOutputRecord?.originalName}
-            onView={() => dlOutputUrl && setActivePlayUrl(dlOutputUrl)}
-            onShare={() => dlOutputUrl && copyToClipboard(dlOutputUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
-            onDownload={() => {
-              const vidId = dlLiveVideo?.videoId || (dlOutputUrl ? extractVideoIdFromUrl(dlOutputUrl) : null);
-              if (vidId) {
-                handleDownloadVideo(vidId, dlLiveVideo?.originalName || downloadOutputRecord?.originalName);
-              }
-            }}
-          />
         </FeaturePage>
       </div>
     );
@@ -2319,6 +2572,34 @@ function App() {
 
   if (page === 'transcode') {
     const tool = navTools.find(t => t.key === 'transcode')!;
+    
+    // Find matched video for live updates
+    const liveV = transcodeOutputRecord
+      ? allVideos.find(v => v.videoId === transcodeOutputRecord.videoId)
+      : null;
+    const tcUrl = liveV?.masterPlaylistUrl || liveV?.outputUrl || transcodeOutputRecord?.masterPlaylistUrl || transcodeOutputRecord?.outputUrl;
+    const tcStatus = liveV?.status ?? (transcodeOutputRecord ? 'queued' : undefined);
+    
+    const isCompleted = tcStatus === 'completed';
+    const isProcessing = tcStatus === 'processing' || tcStatus === 'queued';
+    const isFailed = tcStatus === 'failed';
+
+    const handleShareChannel = (channel: 'whatsapp' | 'email' | 'twitter' | 'copy') => {
+      if (!tcUrl) return;
+      const title = transcodeOutputRecord?.originalName || 'Transcoded Video';
+      if (channel === 'copy') {
+        copyToClipboard(tcUrl)
+          .then(() => showStatus('Link copied to clipboard!', 'success'))
+          .catch(() => showStatus('Failed to copy link', 'error'));
+      } else if (channel === 'whatsapp') {
+        window.open(`https://wa.me/?text=${encodeURIComponent(title + '\n' + tcUrl)}`, '_blank');
+      } else if (channel === 'email') {
+        window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent('Here is the HLS stream link: ' + tcUrl)}`, '_self');
+      } else if (channel === 'twitter') {
+        window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(tcUrl)}&text=${encodeURIComponent('Check out ' + title)}`, '_blank');
+      }
+    };
+
     return (
       <div className="app-shell droplane-bg">
         <FeaturePage
@@ -2337,64 +2618,363 @@ function App() {
           onDeleteVideo={handleDeleteVideo}
           onDownloadVideo={handleDownloadVideo}
           showStatus={showStatus}
+          fullWidth
         >
-          {/* Header outside the container box */}
-          <div className="form-head" style={{ marginBottom: '24px', paddingLeft: '8px' }}>
-            <h2 className="form-breathe-heading">Upload & HLS Transcode</h2>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-              Upload a raw file and produce HLS output for streaming and CDN delivery.
-            </p>
-          </div>
-
-          <div className="tool-form">
-            <div className="form-body">
-              <UploadWidget onUploadComplete={async id => {
-                showStatus('Upload complete. Please select it from the search bar below to transcode.', 'success');
-                try { loadVideos(); } catch {}
-              }} />
-
-              <div style={{ margin: '16px 0', borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: '16px' }}>
-                <label className="input-group">
-                  <span>Or Select Video from Library</span>
-                  <VideoSelector 
-                    allVideos={allVideos} 
-                    selectedVideo={selectedVideo} 
-                    onSelectVideo={setSelectedVideo} 
-                    placeholder="Search video to transcode..."
-                  />
-                </label>
+          <div className="compress-split-layout">
+            {/* ── LEFT PANEL: Inputs ── */}
+            <div className="compress-left-panel">
+              <div className="form-head" style={{ marginBottom: '20px' }}>
+                <h2 className="form-breathe-heading">HLS Transcoder</h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Convert videos to adaptive HLS streams (HTTP Live Streaming) with multi-bitrate playlists.
+                </p>
               </div>
 
-              {selectedVideo && (
-                <div className="op-sub-panel" style={{ marginTop: '12px' }}>
-                  <button className="btn-trigger violet" onClick={() => handleTranscode(selectedVideo.videoId)}>
-                    <Video size={16} /> Start HLS Transcode
-                  </button>
+              {/* Source Tabs */}
+              <div className="compress-source-tabs">
+                {([
+                  { id: 'upload' as const, label: 'Upload File', icon: Upload },
+                  { id: 'cloud' as const, label: 'Cloud Import', icon: CloudUpload },
+                  { id: 'url' as const, label: 'Paste URL', icon: Link },
+                  { id: 'library' as const, label: 'My Library', icon: FileVideo },
+                ]).map(tab => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      className={`compress-tab-btn ${transcodeSourceTab === tab.id ? 'active' : ''}`}
+                      onClick={() => {
+                        setTranscodeSourceTab(tab.id);
+                        if (tab.id === 'cloud') setShowCloudModal(true);
+                      }}
+                    >
+                      <Icon size={14} />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab Content */}
+              <div className="compress-tab-content">
+                {transcodeSourceTab === 'upload' && (
+                  <div className="compress-upload-zone">
+                    <UploadWidget onUploadComplete={async id => {
+                      showStatus('Upload complete! Video selected for HLS transcoding.', 'success');
+                      try {
+                        const videos = await listVideos();
+                        setAllVideos(videos);
+                        const match = videos.find(v => v.videoId === id);
+                        if (match) {
+                          setSelectedVideo(match);
+                        }
+                      } catch (err) {
+                        loadVideos();
+                      }
+                      setTranscodeSourceTab('library');
+                    }} />
+                    <div className="presign-info-strip">
+                      <ShieldCheck size={13} style={{ color: 'var(--success-color)' }} />
+                      <span><strong>Pre-Signed URL Upload</strong> — Direct upload to S3 from your browser. Safest and fastest upload route.</span>
+                    </div>
+                  </div>
+                )}
+
+                {transcodeSourceTab === 'cloud' && (
+                  <div className="compress-cloud-tab">
+                    <div className="cloud-tab-illustration">
+                      <CloudUpload size={40} style={{ color: 'var(--accent-color)', opacity: 0.7 }} />
+                      <h4>Connect a Cloud Provider</h4>
+                      <p>Pull videos from Google Drive, Dropbox, OneDrive, or Box using secure OAuth.</p>
+                      <button className="btn-trigger" onClick={() => setShowCloudModal(true)}>
+                        <CloudUpload size={14} /> Choose Cloud Provider
+                      </button>
+                    </div>
+                    {transcodeUrlInput && (
+                      <div className="cloud-url-preview">
+                        <Link size={12} /> Imported: <code>{transcodeUrlInput.slice(0, 60)}…</code>
+                        <button className="cloud-url-clear" onClick={() => setTranscodeUrlInput('')}><X size={11} /></button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {transcodeSourceTab === 'url' && (
+                  <div className="compress-url-tab">
+                    <label className="input-group">
+                      <span>Video URL (direct link or YouTube/Vimeo)</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                          type="url"
+                          className="text-input"
+                          placeholder="https://youtube.com/watch?v=... or direct HLS / MP4 link"
+                          value={transcodeUrlInput}
+                          onChange={e => setTranscodeUrlInput(e.target.value)}
+                        />
+                        <button
+                          className="btn-trigger salmon-color-btn"
+                          style={{ whiteSpace: 'nowrap', padding: '0 16px' }}
+                          disabled={!transcodeUrlInput.trim() || transcodeIsProcessing}
+                          onClick={handleTranscodeFromUrl}
+                        >
+                          {transcodeIsProcessing ? <RefreshCw size={14} className="pulse-anim" /> : <Download size={14} />}
+                          Fetch & Transcode
+                        </button>
+                      </div>
+                    </label>
+                    <div className="url-tab-note">
+                      <Globe2 size={12} /> Paste any public video link — we'll fetch, store, and transcode it to HLS without requiring local downloads.
+                    </div>
+                  </div>
+                )}
+
+                {transcodeSourceTab === 'library' && (
+                  <div className="compress-library-tab">
+                    <label className="input-group">
+                      <span>Select from Your Library</span>
+                      <VideoSelector
+                        allVideos={allVideos}
+                        selectedVideo={selectedVideo}
+                        onSelectVideo={setSelectedVideo}
+                        placeholder="Search video to transcode..."
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* Settings */}
+              <div className="compress-settings-section">
+                <div className="compress-setting-row">
+                  <label className="input-group" style={{ marginBottom: 0 }}>
+                    <span>Target Resolution / Quality</span>
+                    <select
+                      className="select-input"
+                      value={transcodeResolution}
+                      onChange={e => setTranscodeResolution(e.target.value)}
+                      style={{ width: '100%', marginTop: '6px' }}
+                    >
+                      <option value="Auto">Auto (Adaptive Multi-Bitrate HLS)</option>
+                      <option value="1080p">1080p (Full HD)</option>
+                      <option value="720p">720p (HD)</option>
+                      <option value="480p">480p (SD)</option>
+                      <option value="360p">360p (SD)</option>
+                    </select>
+                  </label>
+                </div>
+
+                <button
+                  className="btn-trigger salmon-color-btn compress-action-btn"
+                  disabled={
+                    transcodeIsProcessing ||
+                    (transcodeSourceTab !== 'url' && !selectedVideo) ||
+                    (transcodeSourceTab === 'url' && !transcodeUrlInput.trim())
+                  }
+                  onClick={() => {
+                    if (transcodeSourceTab === 'url') {
+                      handleTranscodeFromUrl();
+                    } else if (selectedVideo) {
+                      handleTranscode(selectedVideo.videoId);
+                    }
+                  }}
+                >
+                  {transcodeIsProcessing
+                    ? <><RefreshCw size={16} className="pulse-anim" /> Processing…</>
+                    : <><Video size={16} /> Start HLS Transcode</>}
+                </button>
+              </div>
+            </div>
+
+            {/* ── RIGHT PANEL: Output ── */}
+            <div className="compress-right-panel">
+              <div className="compress-output-header">
+                <strong>Output</strong>
+                <span className="compress-output-subtitle">Your adaptive HLS playlist appears here</span>
+              </div>
+
+              {!transcodeOutputRecord ? (
+                <div className="compress-output-empty">
+                  <div className="compress-output-empty-icon">
+                    <Video size={36} style={{ opacity: 0.3 }} />
+                  </div>
+                  <p>No output yet. Run an HLS Transcode to see your adaptive stream result here.</p>
+                  <span>Results persist across page reloads until you transcode a new video.</span>
+                </div>
+              ) : (
+                <div className="compress-output-card">
+                  <div className="coc-status-bar">
+                    {tcStatus === 'completed' ? (
+                      <span className="coc-badge completed">✓ Completed</span>
+                    ) : tcStatus === 'failed' ? (
+                      <span className="coc-badge failed">✗ Failed</span>
+                    ) : (
+                      <span className="coc-badge processing">
+                        <RefreshCw size={11} className="pulse-anim" /> Processing…
+                      </span>
+                    )}
+                    <button
+                      className="coc-clear-btn"
+                      onClick={() => {
+                        setTranscodeOutputRecord(null);
+                        localStorage.removeItem('vf-transcode-output');
+                      }}
+                    >
+                      <X size={12} /> Clear
+                    </button>
+                  </div>
+
+                  <div className="coc-preview">
+                    {tcUrl ? (
+                      <div className="transcode-preview-player-wrapper" style={{ width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden' }}>
+                        <VideoPlayer url={tcUrl} />
+                      </div>
+                    ) : (
+                      <div className="coc-preview-placeholder">
+                        <FileVideo size={32} style={{ opacity: 0.4 }} />
+                        {isProcessing ? (
+                          <span>Transcoding video… <RefreshCw size={12} className="pulse-anim" /></span>
+                        ) : (
+                          <span>Preview will appear when ready</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-actions-container" style={{ position: 'relative' }}>
+                    <div className="coc-actions">
+                      <button
+                        className="coc-action-btn download"
+                        disabled={!tcUrl}
+                        onClick={() => {
+                          setShowTcDownloadOptions(!showTcDownloadOptions);
+                          setShowTcShareOptions(false);
+                        }}
+                        style={!tcUrl ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                      >
+                        <Download size={13} /> Download <ChevronDown size={12} />
+                      </button>
+                      <button
+                        className="coc-action-btn view"
+                        disabled={!tcUrl}
+                        onClick={() => tcUrl && setActivePlayUrl(tcUrl)}
+                      >
+                        <PlayCircle size={13} /> View
+                      </button>
+                      <button
+                        className="coc-action-btn share"
+                        disabled={!tcUrl}
+                        onClick={() => {
+                          setShowTcShareOptions(!showTcShareOptions);
+                          setShowTcDownloadOptions(false);
+                        }}
+                      >
+                        <Share2 size={13} /> Share <ChevronDown size={12} />
+                      </button>
+                    </div>
+
+                    {/* Quality download dropdown menu */}
+                    {showTcDownloadOptions && tcUrl && (
+                      <div className="share-dropdown-menu tc-download-dropdown" style={{ left: 0, right: 'auto', bottom: 'calc(100% + 10px)' }}>
+                        <div className="share-dropdown-header">
+                          Select Download Resolution
+                        </div>
+                        {([
+                          { key: 'auto', label: 'Adaptive (Auto)' },
+                          { key: '1080p', label: '1080p Full HD' },
+                          { key: '720p', label: '720p HD' },
+                          { key: '480p', label: '480p SD' },
+                          { key: '360p', label: '360p SD' }
+                        ]).map(res => (
+                          <button
+                            key={res.key}
+                            className="share-option"
+                            onClick={() => {
+                              const vidId = liveV?.videoId || (tcUrl ? extractVideoIdFromUrl(tcUrl) : null);
+                              if (vidId) {
+                                handleDownloadVideo(vidId, liveV?.originalName || transcodeOutputRecord?.originalName, res.key);
+                              }
+                              setShowTcDownloadOptions(false);
+                            }}
+                          >
+                            <span className="share-option-icon"><Download size={13} /></span>
+                            <span>{res.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Share channels dropdown menu */}
+                    {showTcShareOptions && tcUrl && (
+                      <div className="share-dropdown-menu tc-share-dropdown" style={{ bottom: 'calc(100% + 10px)' }}>
+                        <div className="share-dropdown-header">Share Video</div>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('whatsapp');
+                            setShowTcShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.717-1.456L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.625 1.451 5.403.002 9.803-4.392 9.806-9.799.002-2.62-1.012-5.082-2.859-6.932C16.378 2.025 13.926.995 12.01.995c-5.402 0-9.802 4.394-9.806 9.801-.001 1.57.489 3.106 1.419 4.47l-.988 3.613 3.738-.979zM17.07 14.86c-.273-.136-1.616-.797-1.866-.888-.25-.091-.432-.136-.614.136-.182.273-.705.888-.864 1.07-.159.182-.318.205-.591.069-.273-.136-1.152-.424-2.194-1.353-.811-.723-1.358-1.617-1.517-1.89-.159-.273-.017-.42.12-.556.123-.122.273-.318.409-.477.136-.159.182-.273.273-.455.091-.182.046-.341-.023-.477-.069-.136-.614-1.477-.841-2.023-.222-.536-.464-.463-.637-.472-.164-.008-.353-.01-.54-.01-.188 0-.494.07-.753.353-.259.282-.99 1.07-.99 2.61s1.122 3.028 1.277 3.238c.155.21 2.207 3.37 5.348 4.723.748.322 1.332.514 1.787.659.751.238 1.436.205 1.977.124.603-.09 1.866-.763 2.128-1.463.261-.7.261-1.3.182-1.428-.078-.127-.273-.205-.546-.341z"/></svg>
+                          </span>
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('email');
+                            setShowTcShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon"><Mail size={13} /></span>
+                          <span>Email</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('twitter');
+                            setShowTcShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                          </span>
+                          <span>Twitter / X</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('copy');
+                            setShowTcShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon"><Link size={13} /></span>
+                          <span>Copy Link</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-meta">
+                    <strong className="coc-name" title={transcodeOutputRecord.originalName}>
+                      {transcodeOutputRecord.originalName}
+                    </strong>
+                    <div className="coc-specs">
+                      <span>Target: {transcodeOutputRecord.extra?.resolution || 'Auto'}</span>
+                      {transcodeOutputRecord.sizeBytes ? (
+                        <>
+                          <span className="dot">•</span>
+                          <span>Original: {(transcodeOutputRecord.sizeBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="coc-date">Queued: {new Date(transcodeOutputRecord.queuedAt).toLocaleString()}</div>
+                  </div>
                 </div>
               )}
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
-          {(() => {
-            const liveV = transcodeOutputRecord ? allVideos.find(v => v.videoId === transcodeOutputRecord.videoId) : null;
-            const tcUrl = liveV?.masterPlaylistUrl || liveV?.outputUrl || transcodeOutputRecord?.masterPlaylistUrl || transcodeOutputRecord?.outputUrl;
-            const tcStatus = liveV?.status ?? (transcodeOutputRecord ? 'queued' : undefined);
-            return (
-              <ServiceActionBar
-                outputUrl={tcUrl}
-                outputStatus={tcStatus}
-                videoName={transcodeOutputRecord?.originalName}
-                onView={() => tcUrl && setActivePlayUrl(tcUrl)}
-                onShare={() => tcUrl && copyToClipboard(tcUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
-                onDownload={() => {
-                  const vidId = liveV?.videoId || (tcUrl ? extractVideoIdFromUrl(tcUrl) : null);
-                  if (vidId) {
-                    handleDownloadVideo(vidId, liveV?.originalName || transcodeOutputRecord?.originalName);
-                  }
-                }}
-              />
-            );
-          })()}
         </FeaturePage>
       </div>
     );
@@ -2775,13 +3355,19 @@ function App() {
 
                     {v.status === 'completed' ? (
                       <div className="video-card-actions-sidebar" onClick={(e) => e.stopPropagation()}>
-                        <div className="card-share-dropdown-wrap">
-                          <ShareDropdown
-                            shareUrl={v.outputUrl || v.masterPlaylistUrl || ''}
-                            videoTitle={v.originalName}
-                            onCopied={() => showStatus('Link copied!', 'success')}
-                          />
-                        </div>
+                        <button 
+                          className="video-card-action-btn share"
+                          title="Copy Share Link"
+                          onClick={() => {
+                            const shareUrl = v.outputUrl || v.masterPlaylistUrl || '';
+                            copyToClipboard(shareUrl)
+                              .then(() => showStatus('Link copied to clipboard!', 'success'))
+                              .catch(() => showStatus('Failed to copy link', 'error'));
+                          }}
+                        >
+                          <Share2 size={12} />
+                          <span>Share</span>
+                        </button>
                         <button 
                           className="video-card-action-btn download"
                           title="Download Video"

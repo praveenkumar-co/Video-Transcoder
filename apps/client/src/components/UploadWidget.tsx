@@ -122,3 +122,6 @@ export function UploadWidget({ onUploadComplete }: UploadWidgetProps) {
     </div>
   );
 }
+
+  
+// Instant QR Code Sharing: Generate a temporary QR code for the compressed video so users can scan it and instantly download the smaller video onto their smartphones. 
