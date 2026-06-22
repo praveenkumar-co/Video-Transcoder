@@ -1038,6 +1038,8 @@ function App() {
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [showTcDownloadOptions, setShowTcDownloadOptions] = useState(false);
   const [showTcShareOptions, setShowTcShareOptions] = useState(false);
+  const [showOpsShareOptions, setShowOpsShareOptions] = useState(false);
+  const [showTrimShareOptions, setShowTrimShareOptions] = useState(false);
   const [shareUrlForModal, setShareUrlForModal] = useState<string | null>(null);
   const [compressOutputRecord, setCompressOutputRecord] = useState<CompressOutputRecord | null>(() => {
     try { const s = localStorage.getItem('vf-compress-output'); return s ? JSON.parse(s) : null; } catch { return null; }
@@ -1547,7 +1549,23 @@ function App() {
         ? originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, '_')
         : 'video';
       const resSuffix = resolution && resolution !== 'auto' ? `_${resolution}` : '';
-      link.download = `${cleanName}${resSuffix}.mp4`;
+      
+      let ext = 'mp4';
+      try {
+        const urlObj = new URL(downloadUrl);
+        const pathname = urlObj.pathname;
+        const lastDotIndex = pathname.lastIndexOf('.');
+        if (lastDotIndex !== -1) {
+          const parsedExt = pathname.substring(lastDotIndex + 1);
+          if (parsedExt && !parsedExt.includes('/')) {
+            ext = parsedExt;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse extension from download URL, defaulting to mp4', e);
+      }
+      
+      link.download = `${cleanName}${resSuffix}.${ext}`;
       
       document.body.appendChild(link);
       link.click();
@@ -2982,6 +3000,36 @@ function App() {
 
   if (page === 'ops') {
     const tool = navTools.find(t => t.key === 'ops')!;
+    const latest = [convertOutputRecord, audioOutputRecord, trimOutputRecord]
+      .filter(Boolean)
+      .sort((a, b) => new Date(b!.queuedAt).getTime() - new Date(a!.queuedAt).getTime())[0];
+    
+    const liveV = latest
+      ? allVideos.find(v => v.videoId === latest.videoId)
+      : null;
+    const opUrl = liveV?.outputUrl || latest?.outputUrl;
+    const opStatus = liveV?.status ?? (latest ? 'queued' : undefined);
+    
+    const isCompleted = opStatus === 'completed';
+    const isProcessing = opStatus === 'processing' || opStatus === 'queued';
+    const isFailed = opStatus === 'failed';
+
+    const handleShareChannel = (channel: 'whatsapp' | 'email' | 'twitter' | 'copy') => {
+      if (!opUrl) return;
+      const title = latest?.originalName || 'Processed Media';
+      if (channel === 'copy') {
+        copyToClipboard(opUrl)
+          .then(() => showStatus('Link copied to clipboard!', 'success'))
+          .catch(() => showStatus('Failed to copy link', 'error'));
+      } else if (channel === 'whatsapp') {
+        window.open(`https://wa.me/?text=${encodeURIComponent(title + '\n' + opUrl)}`, '_blank');
+      } else if (channel === 'email') {
+        window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent('Here is the processed media file link: ' + opUrl)}`, '_self');
+      } else if (channel === 'twitter') {
+        window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(opUrl)}&text=${encodeURIComponent('Check out ' + title)}`, '_blank');
+      }
+    };
+
     return (
       <div className="app-shell droplane-bg">
         <FeaturePage
@@ -3000,81 +3048,238 @@ function App() {
           onDeleteVideo={handleDeleteVideo}
           onDownloadVideo={handleDownloadVideo}
           showStatus={showStatus}
+          fullWidth
         >
-          <div className="tool-form">
-            <div className="form-head">
-              <h3>Media Tools</h3>
-              <p>Convert formats, extract audio tracks, and trim clips from your selected source.</p>
+          <div className="compress-split-layout">
+            {/* ── LEFT PANEL: Control Inputs ── */}
+            <div className="compress-left-panel">
+              <div className="tool-form" style={{ background: 'transparent', border: 'none', padding: 0, backdropFilter: 'none', boxShadow: 'none' }}>
+                <div className="form-head">
+                  <h3>Media Tools</h3>
+                  <p>Convert formats, extract audio tracks, and trim clips from your selected source.</p>
+                </div>
+                <div className="form-body">
+                  <label className="input-group">
+                    <span>Source Video</span>
+                    <VideoSelector 
+                      allVideos={allVideos} 
+                      selectedVideo={selectedVideo} 
+                      onSelectVideo={setSelectedVideo} 
+                      placeholder="Search video to process..."
+                    />
+                  </label>
+                  <div className="op-sub-panel">
+                    <h4>Format Conversion</h4>
+                    <div className="op-row">
+                      <select className="select-input" value={convertFormat} onChange={e => setConvertFormat(e.target.value as any)}>
+                        <option value="mp4">MP4 (.mp4)</option>
+                        <option value="webm">WebM (.webm)</option>
+                        <option value="mov">MOV (.mov)</option>
+                        <option value="avi">AVI (.avi)</option>
+                        <option value="mkv">MKV (.mkv)</option>
+                      </select>
+                      <button className="btn-op" disabled={!selectedVideo} onClick={() => selectedVideo && handleConvert(selectedVideo.videoId)}>Convert</button>
+                    </div>
+                  </div>
+                  <div className="op-sub-panel">
+                    <h4>Audio Extraction</h4>
+                    <div className="op-row">
+                      <select className="select-input" value={audioFormat} onChange={e => setAudioFormat(e.target.value as any)}>
+                        <option value="mp3">MP3 (.mp3)</option>
+                        <option value="wav">WAV (.wav)</option>
+                        <option value="aac">AAC (.aac)</option>
+                      </select>
+                      <button className="btn-op" disabled={!selectedVideo} onClick={() => selectedVideo && handleExtractAudio(selectedVideo.videoId)}><Music size={14} /> Extract</button>
+                    </div>
+                  </div>
+                  <div className="op-sub-panel">
+                    <h4>Trim Clip</h4>
+                    <div className="trim-inputs">
+                      <label><span>Start (s)</span><input type="number" className="text-input sm" min="0" value={trimStart} onChange={e => setTrimStart(+e.target.value)} /></label>
+                      <label><span>End (s)</span><input type="number" className="text-input sm" min="1" value={trimEnd} onChange={e => setTrimEnd(+e.target.value)} /></label>
+                    </div>
+                    <button className="btn-op full" disabled={!selectedVideo} onClick={() => selectedVideo && handleTrim(selectedVideo.videoId)}><Scissors size={14} /> Export Clip</button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="form-body">
-              <label className="input-group">
-                <span>Source Video</span>
-                <VideoSelector 
-                  allVideos={allVideos} 
-                  selectedVideo={selectedVideo} 
-                  onSelectVideo={setSelectedVideo} 
-                  placeholder="Search video to process..."
-                />
-              </label>
-              <div className="op-sub-panel">
-                <h4>Format Conversion</h4>
-                <div className="op-row">
-                  <select className="select-input" value={convertFormat} onChange={e => setConvertFormat(e.target.value as any)}>
-                    <option value="mp4">MP4 (.mp4)</option>
-                    <option value="webm">WebM (.webm)</option>
-                    <option value="mov">MOV (.mov)</option>
-                    <option value="avi">AVI (.avi)</option>
-                    <option value="mkv">MKV (.mkv)</option>
-                  </select>
-                  <button className="btn-op" disabled={!selectedVideo} onClick={() => selectedVideo && handleConvert(selectedVideo.videoId)}>Convert</button>
-                </div>
+
+            {/* ── RIGHT PANEL: Output ── */}
+            <div className="compress-right-panel">
+              <div className="compress-output-header">
+                <strong>Output</strong>
+                <span className="compress-output-subtitle">Your processed media file appears here</span>
               </div>
-              <div className="op-sub-panel">
-                <h4>Audio Extraction</h4>
-                <div className="op-row">
-                  <select className="select-input" value={audioFormat} onChange={e => setAudioFormat(e.target.value as any)}>
-                    <option value="mp3">MP3 (.mp3)</option>
-                    <option value="wav">WAV (.wav)</option>
-                    <option value="aac">AAC (.aac)</option>
-                  </select>
-                  <button className="btn-op" disabled={!selectedVideo} onClick={() => selectedVideo && handleExtractAudio(selectedVideo.videoId)}><Music size={14} /> Extract</button>
+
+              {!latest ? (
+                <div className="compress-output-empty">
+                  <div className="compress-output-empty-icon">
+                    <SlidersHorizontal size={36} style={{ opacity: 0.3 }} />
+                  </div>
+                  <p>No output yet. Run format conversion, audio extraction, or trim clip to see results here.</p>
+                  <span>Results persist across page reloads until you run a new operation.</span>
                 </div>
-              </div>
-              <div className="op-sub-panel">
-                <h4>Trim Clip</h4>
-                <div className="trim-inputs">
-                  <label><span>Start (s)</span><input type="number" className="text-input sm" min="0" value={trimStart} onChange={e => setTrimStart(+e.target.value)} /></label>
-                  <label><span>End (s)</span><input type="number" className="text-input sm" min="1" value={trimEnd} onChange={e => setTrimEnd(+e.target.value)} /></label>
+              ) : (
+                <div className="compress-output-card">
+                  <div className="coc-status-bar">
+                    {isCompleted ? (
+                      <span className="coc-badge completed">✓ Completed</span>
+                    ) : isFailed ? (
+                      <span className="coc-badge failed">✗ Failed</span>
+                    ) : (
+                      <span className="coc-badge processing">
+                        <RefreshCw size={11} className="pulse-anim" /> Processing…
+                      </span>
+                    )}
+                    <button
+                      className="coc-clear-btn"
+                      onClick={() => {
+                        if (latest.jobType === 'convert') {
+                          setConvertOutputRecord(null);
+                          localStorage.removeItem('vf-convert-output');
+                        } else if (latest.jobType === 'audio') {
+                          setAudioOutputRecord(null);
+                          localStorage.removeItem('vf-audio-output');
+                        } else if (latest.jobType === 'trim') {
+                          setTrimOutputRecord(null);
+                          localStorage.removeItem('vf-trim-output');
+                        }
+                      }}
+                    >
+                      <X size={12} /> Clear
+                    </button>
+                  </div>
+
+                  <div className="coc-preview">
+                    {opUrl ? (
+                      latest.jobType === 'audio' ? (
+                        <div className="audio-preview-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', background: '#0f172a', padding: '24px' }}>
+                          <Music size={48} style={{ color: 'var(--accent-color)', opacity: 0.8 }} />
+                          <audio src={opUrl} controls style={{ width: '100%' }} />
+                        </div>
+                      ) : (
+                        <div className="transcode-preview-player-wrapper" style={{ width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden' }}>
+                          <VideoPlayer url={opUrl} />
+                        </div>
+                      )
+                    ) : (
+                      <div className="coc-preview-placeholder">
+                        {latest.jobType === 'audio' ? <Music size={32} style={{ opacity: 0.4 }} /> : <FileVideo size={32} style={{ opacity: 0.4 }} />}
+                        {isProcessing ? (
+                          <span>Processing media… <RefreshCw size={12} className="pulse-anim" /></span>
+                        ) : (
+                          <span>Preview will appear when ready</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-actions-container" style={{ position: 'relative' }}>
+                    <div className="coc-actions">
+                      <button
+                        className="coc-action-btn download"
+                        disabled={!opUrl}
+                        onClick={() => {
+                          if (latest.videoId) {
+                            handleDownloadVideo(latest.videoId, liveV?.originalName || latest.originalName);
+                          }
+                        }}
+                        style={!opUrl ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                      >
+                        <Download size={13} /> Download
+                      </button>
+                      {latest.jobType !== 'audio' && (
+                        <button
+                          className="coc-action-btn view"
+                          disabled={!opUrl}
+                          onClick={() => opUrl && setActivePlayUrl(opUrl)}
+                        >
+                          <PlayCircle size={13} /> View
+                        </button>
+                      )}
+                      <button
+                        className="coc-action-btn share"
+                        disabled={!opUrl}
+                        onClick={() => {
+                          setShowOpsShareOptions(!showOpsShareOptions);
+                        }}
+                      >
+                        <Share2 size={13} /> Share <ChevronDown size={12} />
+                      </button>
+                    </div>
+
+                    {/* Share channels dropdown menu */}
+                    {showOpsShareOptions && opUrl && (
+                      <div className="share-dropdown-menu tc-share-dropdown" style={{ bottom: 'calc(100% + 10px)' }}>
+                        <div className="share-dropdown-header">Share Media</div>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('whatsapp');
+                            setShowOpsShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.717-1.456L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.625 1.451 5.403.002 9.803-4.392 9.806-9.799.002-2.62-1.012-5.082-2.859-6.932C16.378 2.025 13.926.995 12.01.995c-5.402 0-9.802 4.394-9.806 9.801-.001 1.57.489 3.106 1.419 4.47l-.988 3.613 3.738-.979zM17.07 14.86c-.273-.136-1.616-.797-1.866-.888-.25-.091-.432-.136-.614.136-.182.273-.705.888-.864 1.07-.159.182-.318.205-.591.069-.273-.136-1.152-.424-2.194-1.353-.811-.723-1.358-1.617-1.517-1.89-.159-.273-.017-.42.12-.556.123-.122.273-.318.409-.477.136-.159.182-.273.273-.455.091-.182.046-.341-.023-.477-.069-.136-.614-1.477-.841-2.023-.222-.536-.464-.463-.637-.472-.164-.008-.353-.01-.54-.01-.188 0-.494.07-.753.353-.259.282-.99 1.07-.99 2.61s1.122 3.028 1.277 3.238c.155.21 2.207 3.37 5.348 4.723.748.322 1.332.514 1.787.659.751.238 1.436.205 1.977.124.603-.09 1.866-.763 2.128-1.463.261-.7.261-1.3.182-1.428-.078-.127-.273-.205-.546-.341z"/></svg>
+                          </span>
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('email');
+                            setShowOpsShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon"><Mail size={13} /></span>
+                          <span>Email</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('twitter');
+                            setShowOpsShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                          </span>
+                          <span>Twitter / X</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('copy');
+                            setShowOpsShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon"><Link size={13} /></span>
+                          <span>Copy Link</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-meta">
+                    <strong className="coc-name" title={latest.originalName}>
+                      {latest.originalName}
+                    </strong>
+                    <div className="coc-specs">
+                      <span>Type: {latest.jobType === 'audio' ? 'Audio Extraction' : latest.jobType === 'convert' ? `Format Conversion (${String(latest.extra?.format || 'Converted').toUpperCase()})` : 'Trimmed Clip'}</span>
+                      {latest.sizeBytes ? (
+                        <>
+                          <span className="dot">•</span>
+                          <span>Original: {(latest.sizeBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="coc-date">Queued: {new Date(latest.queuedAt).toLocaleString()}</div>
+                  </div>
                 </div>
-                <button className="btn-op full" disabled={!selectedVideo} onClick={() => selectedVideo && handleTrim(selectedVideo.videoId)}><Scissors size={14} /> Export Clip</button>
-              </div>
+              )}
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
-          {(() => {
-            const latest = [convertOutputRecord, audioOutputRecord]
-              .filter(Boolean)
-              .sort((a, b) => new Date(b!.queuedAt).getTime() - new Date(a!.queuedAt).getTime())[0];
-            if (!latest) return null;
-            const liveV = allVideos.find(v => v.videoId === latest.videoId);
-            const opUrl = liveV?.outputUrl || latest.outputUrl;
-            const opStatus = liveV?.status ?? 'queued';
-            return (
-              <ServiceActionBar
-                outputUrl={opUrl}
-                outputStatus={opStatus}
-                videoName={latest.originalName}
-                onView={() => opUrl && setActivePlayUrl(opUrl)}
-                onShare={() => opUrl && copyToClipboard(opUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
-                onDownload={() => {
-                  const vidId = liveV?.videoId || (opUrl ? extractVideoIdFromUrl(opUrl) : null);
-                  if (vidId) {
-                    handleDownloadVideo(vidId, liveV?.originalName || latest.originalName);
-                  }
-                }}
-              />
-            );
-          })()}
         </FeaturePage>
       </div>
     );
@@ -3082,6 +3287,30 @@ function App() {
 
   if (page === 'clipexport') {
     const tool = navTools.find(t => t.key === 'clipexport')!;
+    const liveV = trimOutputRecord ? allVideos.find(v => v.videoId === trimOutputRecord.videoId) : null;
+    const trimUrl = liveV?.outputUrl || trimOutputRecord?.outputUrl;
+    const trimStatus = liveV?.status ?? (trimOutputRecord ? 'queued' : undefined);
+    
+    const isCompleted = trimStatus === 'completed';
+    const isProcessing = trimStatus === 'processing' || trimStatus === 'queued';
+    const isFailed = trimStatus === 'failed';
+
+    const handleShareChannel = (channel: 'whatsapp' | 'email' | 'twitter' | 'copy') => {
+      if (!trimUrl) return;
+      const title = trimOutputRecord?.originalName || 'Trimmed Clip';
+      if (channel === 'copy') {
+        copyToClipboard(trimUrl)
+          .then(() => showStatus('Link copied to clipboard!', 'success'))
+          .catch(() => showStatus('Failed to copy link', 'error'));
+      } else if (channel === 'whatsapp') {
+        window.open(`https://wa.me/?text=${encodeURIComponent(title + '\n' + trimUrl)}`, '_blank');
+      } else if (channel === 'email') {
+        window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent('Here is the trimmed clip link: ' + trimUrl)}`, '_self');
+      } else if (channel === 'twitter') {
+        window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(trimUrl)}&text=${encodeURIComponent('Check out ' + title)}`, '_blank');
+      }
+    };
+
     return (
       <div className="app-shell droplane-bg">
         <FeaturePage
@@ -3100,55 +3329,202 @@ function App() {
           onDeleteVideo={handleDeleteVideo}
           onDownloadVideo={handleDownloadVideo}
           showStatus={showStatus}
+          fullWidth
         >
-          <div className="tool-form">
-            <div className="form-head">
-              <h3>Clip Export</h3>
-              <p>Extract specific segments from uploaded videos without quality loss.</p>
-            </div>
-            <div className="form-body">
-              <label className="input-group">
-                <span>Source Video</span>
-                <VideoSelector 
-                  allVideos={allVideos} 
-                  selectedVideo={selectedVideo} 
-                  onSelectVideo={setSelectedVideo} 
-                  placeholder="Search video to clip..."
-                />
-              </label>
-              <div className="op-sub-panel">
-                <h4>Segment Timestamps</h4>
-                <div className="trim-inputs">
-                  <label><span>Start time (seconds)</span><input type="number" className="text-input sm" min="0" value={trimStart} onChange={e => setTrimStart(+e.target.value)} /></label>
-                  <label><span>End time (seconds)</span><input type="number" className="text-input sm" min="1" value={trimEnd} onChange={e => setTrimEnd(+e.target.value)} /></label>
+          <div className="compress-split-layout">
+            {/* ── LEFT PANEL: Control Inputs ── */}
+            <div className="compress-left-panel">
+              <div className="tool-form" style={{ background: 'transparent', border: 'none', padding: 0, backdropFilter: 'none', boxShadow: 'none' }}>
+                <div className="form-head">
+                  <h3>Clip Export</h3>
+                  <p>Extract specific segments from uploaded videos without quality loss.</p>
                 </div>
-                <button className="btn-trigger" style={{ background: 'var(--accent-color)', color: 'white', marginTop: '1rem' }} disabled={!selectedVideo} onClick={() => selectedVideo && handleTrim(selectedVideo.videoId)}>
-                  <Scissors size={14} /> Cut & Export Clip
-                </button>
+                <div className="form-body">
+                  <label className="input-group">
+                    <span>Source Video</span>
+                    <VideoSelector 
+                      allVideos={allVideos} 
+                      selectedVideo={selectedVideo} 
+                      onSelectVideo={setSelectedVideo} 
+                      placeholder="Search video to clip..."
+                    />
+                  </label>
+                  <div className="op-sub-panel">
+                    <h4>Segment Timestamps</h4>
+                    <div className="trim-inputs">
+                      <label><span>Start time (seconds)</span><input type="number" className="text-input sm" min="0" value={trimStart} onChange={e => setTrimStart(+e.target.value)} /></label>
+                      <label><span>End time (seconds)</span><input type="number" className="text-input sm" min="1" value={trimEnd} onChange={e => setTrimEnd(+e.target.value)} /></label>
+                    </div>
+                    <button className="btn-trigger" style={{ background: 'var(--accent-color)', color: 'white', marginTop: '1rem', width: '100%', justifyContent: 'center' }} disabled={!selectedVideo} onClick={() => selectedVideo && handleTrim(selectedVideo.videoId)}>
+                      <Scissors size={14} /> Cut & Export Clip
+                    </button>
+                  </div>
+                </div>
               </div>
+            </div>
+
+            {/* ── RIGHT PANEL: Output ── */}
+            <div className="compress-right-panel">
+              <div className="compress-output-header">
+                <strong>Output</strong>
+                <span className="compress-output-subtitle">Your trimmed clip appears here</span>
+              </div>
+
+              {!trimOutputRecord ? (
+                <div className="compress-output-empty">
+                  <div className="compress-output-empty-icon">
+                    <Scissors size={36} style={{ opacity: 0.3 }} />
+                  </div>
+                  <p>No output yet. Cut and export a clip to see your result here.</p>
+                  <span>Results persist across page reloads until you export a new clip.</span>
+                </div>
+              ) : (
+                <div className="compress-output-card">
+                  <div className="coc-status-bar">
+                    {isCompleted ? (
+                      <span className="coc-badge completed">✓ Completed</span>
+                    ) : isFailed ? (
+                      <span className="coc-badge failed">✗ Failed</span>
+                    ) : (
+                      <span className="coc-badge processing">
+                        <RefreshCw size={11} className="pulse-anim" /> Processing…
+                      </span>
+                    )}
+                    <button
+                      className="coc-clear-btn"
+                      onClick={() => {
+                        setTrimOutputRecord(null);
+                        localStorage.removeItem('vf-trim-output');
+                      }}
+                    >
+                      <X size={12} /> Clear
+                    </button>
+                  </div>
+
+                  <div className="coc-preview">
+                    {trimUrl ? (
+                      <div className="transcode-preview-player-wrapper" style={{ width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden' }}>
+                        <VideoPlayer url={trimUrl} />
+                      </div>
+                    ) : (
+                      <div className="coc-preview-placeholder">
+                        <FileVideo size={32} style={{ opacity: 0.4 }} />
+                        {isProcessing ? (
+                          <span>Processing clip… <RefreshCw size={12} className="pulse-anim" /></span>
+                        ) : (
+                          <span>Preview will appear when ready</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-actions-container" style={{ position: 'relative' }}>
+                    <div className="coc-actions">
+                      <button
+                        className="coc-action-btn download"
+                        disabled={!trimUrl}
+                        onClick={() => {
+                          const vidId = liveV?.videoId || (trimUrl ? extractVideoIdFromUrl(trimUrl) : null);
+                          if (vidId) {
+                            handleDownloadVideo(vidId, liveV?.originalName || trimOutputRecord?.originalName);
+                          }
+                        }}
+                        style={!trimUrl ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                      >
+                        <Download size={13} /> Download
+                      </button>
+                      <button
+                        className="coc-action-btn view"
+                        disabled={!trimUrl}
+                        onClick={() => trimUrl && setActivePlayUrl(trimUrl)}
+                      >
+                        <PlayCircle size={13} /> View
+                      </button>
+                      <button
+                        className="coc-action-btn share"
+                        disabled={!trimUrl}
+                        onClick={() => {
+                          setShowTrimShareOptions(!showTrimShareOptions);
+                        }}
+                      >
+                        <Share2 size={13} /> Share <ChevronDown size={12} />
+                      </button>
+                    </div>
+
+                    {/* Share channels dropdown menu */}
+                    {showTrimShareOptions && trimUrl && (
+                      <div className="share-dropdown-menu tc-share-dropdown" style={{ bottom: 'calc(100% + 10px)' }}>
+                        <div className="share-dropdown-header">Share Clip</div>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('whatsapp');
+                            setShowTrimShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.717-1.456L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.625 1.451 5.403.002 9.803-4.392 9.806-9.799.002-2.62-1.012-5.082-2.859-6.932C16.378 2.025 13.926.995 12.01.995c-5.402 0-9.802 4.394-9.806 9.801-.001 1.57.489 3.106 1.419 4.47l-.988 3.613 3.738-.979zM17.07 14.86c-.273-.136-1.616-.797-1.866-.888-.25-.091-.432-.136-.614.136-.182.273-.705.888-.864 1.07-.159.182-.318.205-.591.069-.273-.136-1.152-.424-2.194-1.353-.811-.723-1.358-1.617-1.517-1.89-.159-.273-.017-.42.12-.556.123-.122.273-.318.409-.477.136-.159.182-.273.273-.455.091-.182.046-.341-.023-.477-.069-.136-.614-1.477-.841-2.023-.222-.536-.464-.463-.637-.472-.164-.008-.353-.01-.54-.01-.188 0-.494.07-.753.353-.259.282-.99 1.07-.99 2.61s1.122 3.028 1.277 3.238c.155.21 2.207 3.37 5.348 4.723.748.322 1.332.514 1.787.659.751.238 1.436.205 1.977.124.603-.09 1.866-.763 2.128-1.463.261-.7.261-1.3.182-1.428-.078-.127-.273-.205-.546-.341z"/></svg>
+                          </span>
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('email');
+                            setShowTrimShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon"><Mail size={13} /></span>
+                          <span>Email</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('twitter');
+                            setShowTrimShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                          </span>
+                          <span>Twitter / X</span>
+                        </button>
+                        <button
+                          className="share-option"
+                          onClick={() => {
+                            handleShareChannel('copy');
+                            setShowTrimShareOptions(false);
+                          }}
+                        >
+                          <span className="share-option-icon"><Link size={13} /></span>
+                          <span>Copy Link</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-meta">
+                    <strong className="coc-name" title={trimOutputRecord.originalName}>
+                      {trimOutputRecord.originalName}
+                    </strong>
+                    <div className="coc-specs">
+                      <span>Type: Trimmed Clip</span>
+                      <span>•</span>
+                      <span>Duration: {trimOutputRecord.extra?.startTime !== undefined && trimOutputRecord.extra?.endTime !== undefined ? `${Number(trimOutputRecord.extra.endTime) - Number(trimOutputRecord.extra.startTime)}s` : 'Unknown'} ({trimOutputRecord.extra?.startTime}s - {trimOutputRecord.extra?.endTime}s)</span>
+                      {trimOutputRecord.sizeBytes ? (
+                        <>
+                          <span className="dot">•</span>
+                          <span>Original: {(trimOutputRecord.sizeBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="coc-date">Queued: {new Date(trimOutputRecord.queuedAt).toLocaleString()}</div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
-          {(() => {
-            const liveV = trimOutputRecord ? allVideos.find(v => v.videoId === trimOutputRecord.videoId) : null;
-            const trimUrl = liveV?.outputUrl || trimOutputRecord?.outputUrl;
-            const trimStatus = liveV?.status ?? (trimOutputRecord ? 'queued' : undefined);
-            return (
-              <ServiceActionBar
-                outputUrl={trimUrl}
-                outputStatus={trimStatus}
-                videoName={trimOutputRecord?.originalName}
-                onView={() => trimUrl && setActivePlayUrl(trimUrl)}
-                onShare={() => trimUrl && copyToClipboard(trimUrl).then(() => showStatus('Link copied!', 'success')).catch(() => showStatus('Failed to copy link', 'error'))}
-                onDownload={() => {
-                  const vidId = liveV?.videoId || (trimUrl ? extractVideoIdFromUrl(trimUrl) : null);
-                  if (vidId) {
-                    handleDownloadVideo(vidId, liveV?.originalName || trimOutputRecord?.originalName);
-                  }
-                }}
-              />
-            );
-          })()}
         </FeaturePage>
       </div>
     );
