@@ -3217,19 +3217,41 @@ a {
 }
 
 /* Sidebar Settings Layout */
-.settings-sidebar-layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 30px;
-  align-items: start;
+@media (min-width: 1024px) {
+  .settings-sidebar-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 48px; /* generous separation gap */
+    align-items: start;
+  }
+  .settings-aside {
+    width: 280px;
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: var(--radius);
+    padding: 20px 16px;
+  }
+  .settings-main-content {
+    max-width: 680px;
+    width: 100%;
+    min-height: 480px;
+  }
 }
 
-.settings-aside {
-  background: rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: var(--radius);
-  padding: 20px 16px;
+@media (max-width: 1023px) {
+  .settings-sidebar-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .settings-aside {
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: var(--radius);
+    padding: 20px 16px;
+  }
 }
 
 .aside-head {
@@ -3316,14 +3338,15 @@ a {
 }
 
 .settings-fields-card {
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(254, 240, 138, 0.2) !important; /* 20% yellow + 80% transparent */
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 2px solid #ffffff !important; /* white border */
   border-radius: var(--radius);
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03) !important;
 }
 
 .api-key-box {

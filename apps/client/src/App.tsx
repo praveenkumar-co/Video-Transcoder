@@ -3877,11 +3877,8 @@ function App() {
     const sidebarTabs = [
       { key: 'general' as const, label: 'General', icon: SlidersHorizontal, desc: 'Manage display details' },
       { key: 'videos' as const, label: 'My Videos', icon: FileVideo, desc: 'Your secure videos' },
-      { key: 'storage' as const, label: 'Storage & Cache', icon: FolderDown, desc: 'Local caches & S3' },
       { key: 'billing' as const, label: 'Billing & Plans', icon: ShieldCheck, desc: 'Subscription details' },
-      { key: 'api' as const, label: 'API Credentials', icon: Zap, desc: 'Tokens & webhooks' },
-      { key: 'security' as const, label: 'Security & Access', icon: ShieldCheck, desc: 'MFA keys' },
-      { key: 'integrations' as const, label: 'Integrations', icon: Globe2, desc: 'Linked developer apps' }
+      { key: 'api' as const, label: 'API Credentials', icon: Zap, desc: 'Tokens & webhooks' }
     ];
 
     return (
@@ -3899,6 +3896,7 @@ function App() {
           onDeleteVideo={handleDeleteVideo}
           onDownloadVideo={handleDownloadVideo}
           showStatus={showStatus}
+          fullWidth
         >
           <div className="settings-sidebar-layout animate-slide-up">
             {/* Sidebar List */}
@@ -3994,7 +3992,7 @@ function App() {
                     <h3>My Processed Videos</h3>
                     <p>All transcode and download assets linked exclusively to your account.</p>
                   </div>
-                  <div className="settings-fields-card" style={{ background: 'transparent', border: 'none', padding: 0 }}>
+                  <div className="settings-fields-card">
                     {loadingUserVideos ? (
                       <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-secondary)' }}>
                         <RefreshCw className="pulse-anim" style={{ margin: '0 auto 12px' }} />
@@ -4154,25 +4152,6 @@ function App() {
                 </div>
               )}
 
-              {settingsActiveTab === 'storage' && (
-                <div className="settings-tab-panel animate-slide-up">
-                  <div className="form-head">
-                    <h3>Storage & Cache Allocation</h3>
-                    <p>Manage raw assets and direct-upload boundaries.</p>
-                  </div>
-                  <div className="settings-fields-card">
-                    <div className="status-indicator-box">
-                      <div className="sib-stat">
-                        <span>Total S3 Space Allocated</span>
-                        <strong>10 GB (Standard Free Trial)</strong>
-                      </div>
-                      <div className="sib-bar-outer"><div className="sib-bar-inner" style={{ width: '4%' }}></div></div>
-                      <span className="sib-caption">400 MB used of 10 GB limit</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {settingsActiveTab === 'billing' && (
                 <div className="settings-tab-panel animate-slide-up">
                   <div className="form-head">
@@ -4206,43 +4185,6 @@ function App() {
                       <button className="btn-trigger" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => alert('API Key copied to clipboard!')}>Copy</button>
                     </div>
                     <span className="sib-caption">Keep this key private! It grants full read/write access to your VideoForge library.</span>
-                  </div>
-                </div>
-              )}
-
-              {settingsActiveTab === 'security' && (
-                <div className="settings-tab-panel animate-slide-up">
-                  <div className="form-head">
-                    <h3>Session Security & Access Keys</h3>
-                    <p>Configure passwordless multi-factor keys.</p>
-                  </div>
-                  <div className="settings-fields-card">
-                    <button className="btn-trigger" style={{ width: 'fit-content' }}>Enable Multi-Factor (MFA)</button>
-                  </div>
-                </div>
-              )}
-
-              {settingsActiveTab === 'integrations' && (
-                <div className="settings-tab-panel animate-slide-up">
-                  <div className="form-head">
-                    <h3>Connected Developer Apps</h3>
-                    <p>Link your processing queues to standard video sites.</p>
-                  </div>
-                  <div className="settings-fields-card">
-                    <div style={{ display: 'grid', gap: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-                        <strong>Amazon S3 Bucket</strong>
-                        <span style={{ color: 'var(--success-color)', fontSize: '12px', fontWeight: 'bold' }}>CONNECTED</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-                        <strong>Vimeo Publisher</strong>
-                        <button className="btn-trigger" style={{ padding: '4px 10px', fontSize: '11px' }}>Connect</button>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0' }}>
-                        <strong>Frame.io Review Space</strong>
-                        <button className="btn-trigger" style={{ padding: '4px 10px', fontSize: '11px' }}>Connect</button>
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
@@ -4531,7 +4473,7 @@ function App() {
         </div>
 
         <div className="drawer-nav-list">
-          {navTools.map(tool => {
+          {navTools.filter(t => t.key !== 'clipexport').map(tool => {
             const Icon = tool.icon;
             return (
               <button
