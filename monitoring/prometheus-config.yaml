@@ -13,9 +13,6 @@ data:
       - "/etc/prometheus/alert-rules.yaml"
 
     scrape_configs:
-      # ── Kubernetes annotation-based auto-discovery ───────────────────────────
-      # Any pod with prometheus.io/scrape: "true" will be scraped automatically.
-      # Used by api (port 4000) and transcoder-worker (port 9091).
       - job_name: 'kubernetes-pods'
         kubernetes_sd_configs:
         - role: pod
@@ -41,8 +38,6 @@ data:
         - source_labels: [__meta_kubernetes_pod_label_app]
           action: replace
           target_label: app
-
-      # ── Static scrape targets (explicit fallback) ────────────────────────────
       - job_name: 'api'
         static_configs:
           - targets: ['api:4000']
@@ -59,9 +54,6 @@ data:
     groups:
       - name: video-transcoder-alerts
         rules:
-
-          # ── Infrastructure ───────────────────────────────────────────────────
-
           - alert: APIInstanceDown
             expr: up{job="api"} == 0
             for: 1m
@@ -79,9 +71,6 @@ data:
             annotations:
               summary: "Transcoder worker is down"
               description: "The transcoder worker has been unreachable for more than 1 minute. Videos will not be processed."
-
-          # ── Queue Health ─────────────────────────────────────────────────────
-
           - alert: QueueDepthHigh
             expr: vp_queue_depth > 20
             for: 2m
@@ -99,9 +88,6 @@ data:
             annotations:
               summary: "Transcoding queue is critically backed up"
               description: "Queue depth is {{ $value }} (above 100). Immediate attention required."
-
-          # ── Job Failures ─────────────────────────────────────────────────────
-
           - alert: JobFailureRateHigh
             expr: rate(vp_transcoder_jobs_failed_total[5m]) > 0.1
             for: 1m
@@ -110,9 +96,6 @@ data:
             annotations:
               summary: "High transcoding job failure rate"
               description: "More than 10% of transcoding jobs are failing per second."
-
-          # ── API Performance ──────────────────────────────────────────────────
-
           - alert: HighHTTP5xxErrorRate
             expr: |
               sum(rate(vp_http_requests_total{status_code=~"5.."}[1m]))

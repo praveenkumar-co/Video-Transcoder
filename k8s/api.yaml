@@ -7,6 +7,7 @@ spec:
   selector:
     matchLabels:
       app: api
+      #  thsi is the blue print of pod, so the pod will have this label
   template:
     metadata:
       labels:
