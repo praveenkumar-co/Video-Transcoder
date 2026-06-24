@@ -107,11 +107,7 @@ async function bootstrap(): Promise<void> {
   try {
     await connectDB();
     console.info('MongoDB connected');
-
-    // Verify SMTP connection
     await verifyMailer();
-
-    // Initialize Bloom Filter and backfill
     await initUsernameBloom();
     await backfillUsernameBloom();
 

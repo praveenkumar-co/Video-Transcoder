@@ -11,11 +11,9 @@ async function getVideoIdForJob(jobId: string): Promise<string> {
   if (videoId) {
     return videoId;
   }
-
   console.warn(`[BullMQ] Could not load job data for ${jobId}; falling back to job id`);
   return jobId;
 }
-
 export function startVideoWorker(): void {
   const queueEvents = new QueueEvents('video-transcode', {
     connection: {

@@ -18,6 +18,7 @@ const s3Client = new S3Client({
     accessKeyId: env.AWS_ACCESS_KEY_ID,
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
   },
+  // often nodehttpHandler is used when there is a connection between nodejs and AWS SDK like S3 
   requestHandler: new NodeHttpHandler({
     httpsAgent: new HttpsAgent({
       keepAlive: true,

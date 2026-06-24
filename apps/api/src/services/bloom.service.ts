@@ -3,7 +3,6 @@ import { BloomFilter } from 'scalable-bloom-kit';
 import { env } from '../env';
 import { UserModel } from '../models/user.model';
 
-// Initialize Redis Client for the Bloom Filter
 const client = createClient({
   url: `redis://${env.REDIS_HOST}:${env.REDIS_PORT}`,
 });
@@ -15,8 +14,6 @@ export const usernameBloom = new BloomFilter({
   errorRate: 0.01,
   expansion: 2,
 });
-
-// Initialize connection and Bloom Filter structure
 export async function initUsernameBloom(): Promise<void> {
   if (!client.isOpen) {
     await client.connect();
@@ -26,7 +23,6 @@ export async function initUsernameBloom(): Promise<void> {
   console.info('[bloom] Username Bloom Filter initialized successfully');
 }
 
-// Backfill existing MongoDB usernames into the Bloom Filter (run once on startup)
 export async function backfillUsernameBloom(): Promise<void> {
   try {
     const users = await UserModel.find(
@@ -37,12 +33,10 @@ export async function backfillUsernameBloom(): Promise<void> {
     let count = 0;
     for (const user of users) {
       if (user.username) {
-        // Add to Bloom Filter
         await usernameBloom.add(user.username);
         count++;
       }
     }
-
     if (count > 0) {
       console.info(`[bloom] Backfilled ${count} username(s) into Bloom Filter successfully`);
     } else {
