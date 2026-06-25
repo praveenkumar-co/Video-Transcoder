@@ -40,7 +40,7 @@ const corsMiddleware = cors({
 });
 
 app.use(corsMiddleware);
-app.options('*', corsMiddleware);
+app.options('/*splat', corsMiddleware);
 app.use(express.json());
 app.use((req, res, next) => {
   const end = httpRequestDuration.startTimer();

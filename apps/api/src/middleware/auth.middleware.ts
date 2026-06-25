@@ -25,6 +25,9 @@ export const isAuthenticated = asyncHandler(
     if (!token && req.headers.authorization?.startsWith('Bearer ')) {
       token = req.headers.authorization.split(' ')[1];
     }
+    if (!token && req.query.token) {
+      token = req.query.token as string;
+    }
     if (!token) {
       throw new ApiError(401, 'Access denied. Please authenticate first.');
     }

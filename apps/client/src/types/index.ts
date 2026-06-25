@@ -28,6 +28,8 @@ export interface VideoMetaData {
   status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed';
   masterPlaylistUrl?: string;
   outputUrl?: string;
+  thumbnailUrl?: string;
+  progress?: number;
   uploadedAt: string;
   updatedAt: string;
 }

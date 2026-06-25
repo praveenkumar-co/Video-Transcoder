@@ -176,3 +176,14 @@ export async function getVideoDownloadUrlAPI(
   return body.data.downloadUrl;
 }
 
+export async function triggerThumbnail(videoId: string, startTime?: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/process/thumbnail`, {
+    method: 'POST',
+    headers: getAuthHeaders('application/json'),
+    body: JSON.stringify({ videoId, startTime }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
+  return body.data;
+}
+

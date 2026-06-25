@@ -17,10 +17,12 @@ import {
   triggerExtractAudio,
   triggerTrim,
   triggerDownloadUrl,
+  triggerThumbnail,
   deleteVideo,
   getVideoDownloadUrlAPI,
 } from './api/upload.api';
 import { VideoMetaData } from './types';
+import { API_BASE } from './api/config';
 import {
   ArrowRight,
   BarChart3,
@@ -32,6 +34,7 @@ import {
   FileVideo,
   FolderDown,
   Gauge,
+  Image,
   Globe2,
   Link,
   LogOut,
@@ -89,6 +92,7 @@ export type PageView =
   | 'transcode'
   | 'ops'
   | 'clipexport'
+  | 'thumbnail'
   | 'library'
   | 'settings'
   | 'pricing'
@@ -145,6 +149,7 @@ const navTools = [
   { key: 'transcode' as PageView,   label: 'HLS Transcode', caption: 'Upload and stream',     icon: Video,           jobType: 'transcode'  },
   { key: 'ops' as PageView,         label: 'Media Tools',   caption: 'Trim, convert, audio',  icon: SlidersHorizontal, jobType: 'ops'      },
   { key: 'clipexport' as PageView,  label: 'Clip Export',   caption: 'Export video segments', icon: Scissors,        jobType: 'trim'       },
+  { key: 'thumbnail' as PageView,   label: 'Thumbnail Gen', caption: 'Generate video cover',   icon: Image,           jobType: 'thumbnail'  },
   { key: 'library' as PageView,     label: 'My Videos',     caption: 'All uploads & outputs', icon: FileVideo,       jobType: 'all'        },
   { key: 'settings' as PageView,    label: 'Settings',      caption: 'Profile and theme',     icon: Settings,        jobType: 'settings'   },
 ];
@@ -156,6 +161,7 @@ const dockTools = [
   { key: 'transcode'  as PageView, label: 'HLS Transcode', icon: Video,             emoji: '🎬' },
   { key: 'ops'        as PageView, label: 'Media Tools',   icon: SlidersHorizontal, emoji: '🎛️' },
   { key: 'clipexport' as PageView, label: 'Clip Export',   icon: Scissors,          emoji: '✂️' },
+  { key: 'thumbnail'  as PageView, label: 'Thumbnail Gen', icon: Image,             emoji: '🖼️' },
   { key: 'library'    as PageView, label: 'My Videos',     icon: FileVideo,         emoji: '📁' },
   { key: 'settings'   as PageView, label: 'Settings',      icon: Settings,          emoji: '⚙️' },
 ];
@@ -825,12 +831,14 @@ function VideoSelector({
   allVideos,
   selectedVideo,
   onSelectVideo,
-  placeholder = "Search video by name..."
+  placeholder = "Search video by name...",
+  onDeleteVideo
 }: {
   allVideos: VideoMetaData[];
   selectedVideo: VideoMetaData | null;
   onSelectVideo: (v: VideoMetaData | null) => void;
   placeholder?: string;
+  onDeleteVideo?: (videoId: string) => Promise<void> | void;
 }) {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -911,7 +919,7 @@ function VideoSelector({
                 style={{
                   padding: '10px 14px',
                   cursor: 'pointer',
-                  borderBottom: '1px solid rgba(0,0,0,0.05)',
+                  borderBottom: '1px solid var(--border-color, rgba(0,0,0,0.05))',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -921,18 +929,45 @@ function VideoSelector({
                   onSelectVideo(v);
                   setIsOpen(false);
                 }}
-                onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.02)')}
+                onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
                 onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <div style={{ display: 'grid', textAlign: 'left' }}>
-                  <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>{v.originalName}</strong>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                    {new Date(v.uploadedAt).toLocaleDateString()} · {(v.sizeBytes / (1024*1024)).toFixed(1)} MB
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left', flex: 1, minWidth: 0 }}>
+                  <div style={{ width: '40px', height: '24px', borderRadius: '4px', background: '#121212', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {v.thumbnailUrl ? (
+                      <img src={v.thumbnailUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <FileVideo size={12} style={{ color: 'rgba(255,255,255,0.4)' }} />
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', minWidth: 0 }}>
+                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-color, #0f172a)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.originalName}</strong>
+                    <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                      {new Date(v.uploadedAt).toLocaleDateString()} · {v.sizeBytes && v.sizeBytes > 0 ? (v.sizeBytes / (1024*1024)).toFixed(1) : '0.0'} MB
+                    </span>
+                  </div>
                 </div>
-                <span className={`stat-tag ${v.status}`} style={{ fontSize: '0.65rem' }}>
-                  {v.status}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+                  <span className={`stat-tag ${v.status}`} style={{ fontSize: '0.65rem' }}>
+                    {v.status}
+                  </span>
+                  {onDeleteVideo && (
+                    <button
+                      type="button"
+                      title="Delete Video"
+                      style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                      onMouseOver={(e) => (e.currentTarget.style.color = '#ef4444')}
+                      onMouseOut={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to delete "${v.originalName || 'this video'}"?`)) {
+                          await onDeleteVideo(v.videoId);
+                        }
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           ) : (
@@ -956,7 +991,7 @@ const toolsMegaOptions = [
   { key: 'clipexport' as PageView,  label: 'Clip Export & Trim', caption: 'Extract segments and clips from tracks', icon: Scissors, status: 'Active' },
   { key: 'compress' as PageView,    label: 'AI Subtitles & Captions', caption: 'Automated high-accuracy whisper translation', icon: Wand2, status: 'Premium' },
   { key: 'compress' as PageView,    label: 'Video Watermarking', caption: 'Inject custom corporate branding overlays', icon: ShieldCheck, status: 'Premium' },
-  { key: 'compress' as PageView,    label: 'Frame Extractor',   caption: 'Extract exact matching thumbnail PNG files', icon: Sparkles, status: 'Premium' },
+  { key: 'thumbnail' as PageView,   label: 'Thumbnail Generator', caption: 'Extract custom thumbnail images from video', icon: Image, status: 'Active' },
 ];
 
 const resourcesOptions = [
@@ -1027,6 +1062,11 @@ function App() {
   const [audioFormat, setAudioFormat] = useState<'mp3' | 'wav' | 'aac'>('mp3');
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(30);
+  const [thumbnailOffset, setThumbnailOffset] = useState(2);
+  const [thumbnailIsProcessing, setThumbnailIsProcessing] = useState(false);
+  const [thumbnailSourceTab, setThumbnailSourceTab] = useState<'upload' | 'cloud' | 'url' | 'library'>('upload');
+  const [thumbnailUrlInput, setThumbnailUrlInput] = useState('');
+  const [showThumbnailShareOptions, setShowThumbnailShareOptions] = useState(false);
   const [googleEmail, setGoogleEmail] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -1043,6 +1083,9 @@ function App() {
   const [shareUrlForModal, setShareUrlForModal] = useState<string | null>(null);
   const [compressOutputRecord, setCompressOutputRecord] = useState<CompressOutputRecord | null>(() => {
     try { const s = localStorage.getItem('vf-compress-output'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [thumbnailOutputRecord, setThumbnailOutputRecord] = useState<ServiceOutputRecord | null>(() => {
+    try { const s = localStorage.getItem('vf-thumbnail-output'); return s ? JSON.parse(s) : null; } catch { return null; }
   });
 
   const hasStartedCompression = !!compressOutputRecord || compressIsProcessing;
@@ -1358,15 +1401,49 @@ function App() {
 
   useEffect(() => {
     if (!selectedVideo || ['completed', 'failed'].includes(selectedVideo.status)) return;
-    const id = setInterval(async () => {
+    
+    const token = localStorage.getItem('videoforge-token');
+    const eventSource = new EventSource(`${API_BASE}/api/process/status/${selectedVideo.videoId}/live?token=${encodeURIComponent(token || '')}`, {
+      withCredentials: true
+    });
+    
+    eventSource.onmessage = (event) => {
       try {
-        const v = await getVideoStatus(selectedVideo.videoId);
-        setSelectedVideo(v);
-        loadVideos();
-      } catch {}
-    }, 3000);
-    return () => clearInterval(id);
-  }, [selectedVideo]);
+        const data = JSON.parse(event.data);
+        
+        setSelectedVideo(prev => prev ? {
+          ...prev,
+          status: data.status,
+          progress: data.progress,
+          thumbnailUrl: data.thumbnailUrl,
+          outputUrl: data.outputUrl,
+        } : null);
+
+        setAllVideos(prev => prev.map(v => v.videoId === selectedVideo.videoId ? {
+          ...v,
+          status: data.status,
+          progress: data.progress,
+          thumbnailUrl: data.thumbnailUrl,
+          outputUrl: data.outputUrl,
+        } : v));
+
+        if (data.status === 'completed' || data.status === 'failed') {
+          eventSource.close();
+          loadVideos();
+        }
+      } catch (err) {
+        console.error('[SSE] Failed to parse event:', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [selectedVideo?.videoId, selectedVideo?.status]);
 
   // GSAP: VideoForge heading character animation
   useEffect(() => {
@@ -1798,6 +1875,28 @@ function App() {
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
   };
 
+  const handleGenerateThumbnail = async (videoId: string) => {
+    try {
+      setThumbnailIsProcessing(true);
+      showStatus('Queuing thumbnail extraction job…', 'info');
+      const result = await triggerThumbnail(videoId, thumbnailOffset);
+      showStatus('Thumbnail extraction queued! Output will appear when ready.', 'success');
+      const record: ServiceOutputRecord = {
+        videoId: result?.videoId ?? videoId,
+        originalName: selectedVideo?.originalName ?? 'Video Thumbnail',
+        outputUrl: result?.outputUrl,
+        sizeBytes: selectedVideo?.sizeBytes,
+        jobType: 'thumbnail',
+        extra: { offset: thumbnailOffset },
+        queuedAt: new Date().toISOString(),
+      };
+      setThumbnailOutputRecord(record);
+      localStorage.setItem('vf-thumbnail-output', JSON.stringify(record));
+      loadVideos();
+    } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
+    finally { setThumbnailIsProcessing(false); }
+  };
+
   const signInWithGoogle = () => {
     if (!googleEmail.includes('@')) { showStatus('Enter your Google email.', 'error'); return; }
     const name = googleEmail.split('@')[0].replace(/[._-]+/g, ' ');
@@ -1827,7 +1926,7 @@ function App() {
 
     // Resize + compress the image in a canvas before converting to base64.
     // This keeps the payload small enough for the backend body limit and localStorage.
-    const img = new Image();
+    const img = new window.Image();
     const objectUrl = URL.createObjectURL(file);
     img.onload = async () => {
       URL.revokeObjectURL(objectUrl);
@@ -2150,6 +2249,7 @@ function App() {
                         selectedVideo={selectedVideo}
                         onSelectVideo={setSelectedVideo}
                         placeholder="Search video to compress..."
+                        onDeleteVideo={handleDeleteVideo}
                       />
                     </label>
                   </div>
@@ -2755,6 +2855,7 @@ function App() {
                         selectedVideo={selectedVideo}
                         onSelectVideo={setSelectedVideo}
                         placeholder="Search video to transcode..."
+                        onDeleteVideo={handleDeleteVideo}
                       />
                     </label>
                   </div>
@@ -3066,6 +3167,7 @@ function App() {
                       selectedVideo={selectedVideo} 
                       onSelectVideo={setSelectedVideo} 
                       placeholder="Search video to process..."
+                      onDeleteVideo={handleDeleteVideo}
                     />
                   </label>
                   <div className="op-sub-panel">
@@ -3347,6 +3449,7 @@ function App() {
                       selectedVideo={selectedVideo} 
                       onSelectVideo={setSelectedVideo} 
                       placeholder="Search video to clip..."
+                      onDeleteVideo={handleDeleteVideo}
                     />
                   </label>
                   <div className="op-sub-panel">
@@ -3530,6 +3633,315 @@ function App() {
     );
   }
 
+  if (page === 'thumbnail') {
+    const tool = navTools.find(t => t.key === 'thumbnail')!;
+    const liveV = thumbnailOutputRecord ? allVideos.find(v => v.videoId === thumbnailOutputRecord.videoId) : null;
+    const thumbnailUrl = liveV?.outputUrl || liveV?.thumbnailUrl || thumbnailOutputRecord?.outputUrl;
+    const thumbnailStatus = liveV?.status ?? (thumbnailOutputRecord ? 'queued' : undefined);
+    
+    const isCompleted = thumbnailStatus === 'completed';
+    const isProcessing = thumbnailStatus === 'processing' || thumbnailStatus === 'queued';
+    const isFailed = thumbnailStatus === 'failed';
+
+    const handleShareChannel = (channel: 'whatsapp' | 'email' | 'twitter' | 'copy') => {
+      if (!thumbnailUrl) return;
+      const title = thumbnailOutputRecord?.originalName || 'Video Thumbnail';
+      if (channel === 'copy') {
+        copyToClipboard(thumbnailUrl)
+          .then(() => showStatus('Link copied to clipboard!', 'success'))
+          .catch(() => showStatus('Failed to copy link', 'error'));
+      } else if (channel === 'whatsapp') {
+        window.open(`https://wa.me/?text=${encodeURIComponent(title + '\n' + thumbnailUrl)}`, '_blank');
+      } else if (channel === 'email') {
+        window.open(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent('Here is the video thumbnail link: ' + thumbnailUrl)}`, '_self');
+      } else if (channel === 'twitter') {
+        window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(thumbnailUrl)}&text=${encodeURIComponent('Check out ' + title)}`, '_blank');
+      }
+    };
+
+    return (
+      <div className="app-shell droplane-bg">
+        <FeaturePage
+          tool={tool}
+          history={historyFor('thumbnail')}
+          historyLabel="Thumbnail History"
+          onBack={goHome}
+          onRefresh={loadVideos}
+          selectedVideo={selectedVideo}
+          onSelectVideo={setSelectedVideo}
+          activePlayUrl={activePlayUrl}
+          setActivePlayUrl={setActivePlayUrl}
+          activePlayResolution={activePlayResolution}
+          activePlayVideo={activePlayVideo}
+          setActivePlayVideo={setActivePlayVideo}
+          onDeleteVideo={handleDeleteVideo}
+          onDownloadVideo={handleDownloadVideo}
+          showStatus={showStatus}
+          fullWidth
+        >
+          <div className="compress-split-layout">
+            <div className="compress-left-panel">
+              <div className="tool-form" style={{ background: 'transparent', border: 'none', padding: 0, backdropFilter: 'none', boxShadow: 'none' }}>
+                <div className="form-head">
+                  <h3>Thumbnail Generator</h3>
+                  <p>Extract custom, high-quality thumbnails from your video assets at any timestamp.</p>
+                </div>
+                
+                <div className="compress-source-tabs" style={{ marginBottom: '20px' }}>
+                  {([
+                    { id: 'upload' as const, label: 'Upload File', icon: Upload },
+                    { id: 'cloud' as const, label: 'Cloud Import', icon: CloudUpload },
+                    { id: 'url' as const, label: 'Paste URL', icon: Link },
+                    { id: 'library' as const, label: 'My Library', icon: FileVideo },
+                  ]).map(tab => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        className={`compress-tab-btn ${thumbnailSourceTab === tab.id ? 'active' : ''}`}
+                        onClick={() => {
+                          setThumbnailSourceTab(tab.id);
+                          if (tab.id === 'cloud') setShowCloudModal(true);
+                        }}
+                      >
+                        <Icon size={14} />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="compress-tab-content">
+                  {thumbnailSourceTab === 'upload' && (
+                    <div className="compress-upload-zone">
+                      <UploadWidget onUploadComplete={async id => {
+                        showStatus('Upload complete! Video selected for thumbnail generation.', 'success');
+                        try {
+                          const videos = await listVideos();
+                          setAllVideos(videos);
+                          const match = videos.find(v => v.videoId === id);
+                          if (match) {
+                            setSelectedVideo(match);
+                          }
+                        } catch (err) {
+                          loadVideos();
+                        }
+                        setThumbnailSourceTab('library');
+                      }} />
+                      <div className="presign-info-strip">
+                        <ShieldCheck size={13} style={{ color: 'var(--success-color)' }} />
+                        <span><strong>Pre-Signed URL Upload</strong> — Direct upload to S3 from your browser.</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {thumbnailSourceTab === 'cloud' && (
+                    <div className="compress-cloud-tab">
+                      <div className="cloud-tab-illustration">
+                        <CloudUpload size={40} style={{ color: 'var(--accent-color)', opacity: 0.7 }} />
+                        <h4>Connect a Cloud Provider</h4>
+                        <p>Import videos from Google Drive, Dropbox, or OneDrive using secure OAuth.</p>
+                        <button className="btn-trigger" onClick={() => setShowCloudModal(true)}>
+                          <CloudUpload size={14} /> Choose Cloud Provider
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {thumbnailSourceTab === 'url' && (
+                    <div className="compress-url-tab">
+                      <label className="input-group">
+                        <span>Video URL</span>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input
+                            type="url"
+                            className="text-input"
+                            placeholder="https://youtube.com/watch?v=... or direct video link"
+                            value={thumbnailUrlInput}
+                            onChange={e => thumbnailUrlInput === undefined ? '' : setThumbnailUrlInput(e.target.value)}
+                          />
+                          <button
+                            className="btn-trigger salmon-color-btn"
+                            style={{ whiteSpace: 'nowrap', padding: '0 16px' }}
+                            disabled={!thumbnailUrlInput.trim() || thumbnailIsProcessing}
+                            onClick={async () => {
+                              if (!thumbnailUrlInput.trim()) return;
+                              try {
+                                setThumbnailIsProcessing(true);
+                                showStatus('Fetching video from URL...', 'info');
+                                const result = await triggerDownloadUrl(thumbnailUrlInput.trim());
+                                showStatus('Video fetched! Select timestamp below to generate thumbnail.', 'success');
+                                loadVideos();
+                                setThumbnailUrlInput('');
+                                setThumbnailSourceTab('library');
+                              } catch (err: any) {
+                                showStatus(err.message || 'Failed to fetch', 'error');
+                              } finally {
+                                setThumbnailIsProcessing(false);
+                              }
+                            }}
+                          >
+                            {thumbnailIsProcessing ? <RefreshCw size={14} className="pulse-anim" /> : <Download size={14} />}
+                            Fetch Video
+                          </button>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+
+                  {thumbnailSourceTab === 'library' && (
+                    <div className="compress-library-tab">
+                      <label className="input-group">
+                        <span>Source Video</span>
+                        <VideoSelector 
+                          allVideos={allVideos} 
+                          selectedVideo={selectedVideo} 
+                          onSelectVideo={setSelectedVideo} 
+                          placeholder="Search video to capture..."
+                          onDeleteVideo={handleDeleteVideo}
+                        />
+                      </label>
+                      
+                      <div className="op-sub-panel" style={{ marginTop: '20px' }}>
+                        <h4>Extraction Offset</h4>
+                        <div className="trim-inputs" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <label>
+                            <span>Capture Timestamp (seconds)</span>
+                            <input 
+                              type="number" 
+                              className="text-input sm" 
+                              min="0" 
+                              value={thumbnailOffset} 
+                              onChange={e => setThumbnailOffset(Math.max(0, +e.target.value))} 
+                            />
+                          </label>
+                        </div>
+                        <button 
+                          className="btn-trigger" 
+                          style={{ background: 'var(--accent-color)', color: 'white', marginTop: '1.5rem', width: '100%', justifyContent: 'center' }} 
+                          disabled={!selectedVideo || thumbnailIsProcessing} 
+                          onClick={() => selectedVideo && handleGenerateThumbnail(selectedVideo.videoId)}
+                        >
+                          <Image size={14} /> Extract & Generate Cover
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="compress-right-panel">
+              <div className="compress-output-header">
+                <strong>Output</strong>
+                <span className="compress-output-subtitle">Your generated thumbnail appears here</span>
+              </div>
+
+              {!thumbnailOutputRecord ? (
+                <div className="compress-output-empty">
+                  <div className="compress-output-empty-icon">
+                    <Image size={36} style={{ opacity: 0.3 }} />
+                  </div>
+                  <p>No output yet. Select a video, set a timestamp, and extract the thumbnail.</p>
+                </div>
+              ) : (
+                <div className="compress-output-card">
+                  <div className="coc-status-bar">
+                    {isCompleted ? (
+                      <span className="coc-badge completed">✓ Completed</span>
+                    ) : isFailed ? (
+                      <span className="coc-badge failed">✗ Failed</span>
+                    ) : (
+                      <span className="coc-badge processing">
+                        <RefreshCw size={11} className="pulse-anim" /> Processing… {liveV?.progress || 0}%
+                      </span>
+                    )}
+                    <button
+                      className="coc-clear-btn"
+                      onClick={() => {
+                        setThumbnailOutputRecord(null);
+                        localStorage.removeItem('vf-thumbnail-output');
+                      }}
+                    >
+                      <X size={12} /> Clear
+                    </button>
+                  </div>
+
+                  <div className="coc-preview" style={{ background: '#121212', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '8px' }}>
+                    {thumbnailUrl ? (
+                      <img 
+                        src={thumbnailUrl} 
+                        alt="Extracted Thumbnail" 
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      />
+                    ) : (
+                      <div className="coc-preview-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: 'var(--text-muted)' }}>
+                        <Image size={32} style={{ opacity: 0.4 }} />
+                        {isProcessing ? (
+                          <span>Generating thumbnail... {liveV?.progress || 0}%</span>
+                        ) : (
+                          <span>Thumbnail preview will appear here</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-actions-container" style={{ position: 'relative', marginTop: '16px' }}>
+                    <div className="coc-actions" style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        className="coc-action-btn download"
+                        disabled={!thumbnailUrl}
+                        onClick={() => {
+                          if (thumbnailUrl) {
+                            window.open(thumbnailUrl, '_blank');
+                          }
+                        }}
+                        style={{ flex: 1, padding: '8px 16px', borderRadius: '6px', background: 'var(--accent-color)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: thumbnailUrl ? 'pointer' : 'not-allowed', opacity: thumbnailUrl ? 1 : 0.5 }}
+                      >
+                        <Download size={13} /> Open Image
+                      </button>
+                      <button
+                        className="coc-action-btn share"
+                        disabled={!thumbnailUrl}
+                        onClick={() => setShowThumbnailShareOptions(!showThumbnailShareOptions)}
+                        style={{ padding: '8px 16px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-color)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px', cursor: thumbnailUrl ? 'pointer' : 'not-allowed', opacity: thumbnailUrl ? 1 : 0.5 }}
+                      >
+                        <Share2 size={13} /> Share <ChevronDown size={12} />
+                      </button>
+                    </div>
+
+                    {showThumbnailShareOptions && thumbnailUrl && (
+                      <div className="share-dropdown-menu tc-share-dropdown" style={{ bottom: 'calc(100% + 10px)' }}>
+                        <div className="share-dropdown-header">Share Cover</div>
+                        <button className="share-option" onClick={() => { handleShareChannel('whatsapp'); setShowThumbnailShareOptions(false); }}><span className="share-option-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.717-1.456L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.625 1.451 5.403.002 9.803-4.392 9.806-9.799.002-2.62-1.012-5.082-2.859-6.932C16.378 2.025 13.926.995 12.01.995c-5.402 0-9.802 4.394-9.806 9.801-.001 1.57.489 3.106 1.419 4.47l-.988 3.613 3.738-.979zM17.07 14.86c-.273-.136-1.616-.797-1.866-.888-.25-.091-.432-.136-.614.136-.182.273-.705.888-.864 1.07-.159.182-.318.205-.591.069-.273-.136-1.152-.424-2.194-1.353-.811-.723-1.358-1.617-1.517-1.89-.159-.273-.017-.42.12-.556.123-.122.273-.318.409-.477.136-.159.182-.273.273-.455.091-.182.046-.341-.023-.477-.069-.136-.614-1.477-.841-2.023-.222-.536-.464-.463-.637-.472-.164-.008-.353-.01-.54-.01-.188 0-.494.07-.753.353-.259.282-.99 1.07-.99 2.61s1.122 3.028 1.277 3.238c.155.21 2.207 3.37 5.348 4.723.748.322 1.332.514 1.787.659.751.238 1.436.205 1.977.124.603-.09 1.866-.763 2.128-1.463.261-.7.261-1.3.182-1.428-.078-.127-.273-.205-.546-.341z"/></svg></span>WhatsApp</button>
+                        <button className="share-option" onClick={() => { handleShareChannel('email'); setShowThumbnailShareOptions(false); }}><span className="share-option-icon"><Mail size={13} /></span>Email</button>
+                        <button className="share-option" onClick={() => { handleShareChannel('twitter'); setShowThumbnailShareOptions(false); }}><span className="share-option-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></span>Twitter / X</button>
+                        <button className="share-option" onClick={() => { handleShareChannel('copy'); setShowThumbnailShareOptions(false); }}><span className="share-option-icon"><Link size={13} /></span>Copy Link</button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="coc-meta" style={{ marginTop: '12px' }}>
+                    <strong className="coc-name" title={thumbnailOutputRecord.originalName}>
+                      {thumbnailOutputRecord.originalName}
+                    </strong>
+                    <div className="coc-specs">
+                      <span>Type: Video Thumbnail</span>
+                      <span>•</span>
+                      <span>Capture Time: {thumbnailOutputRecord.extra?.offset || 2}s</span>
+                    </div>
+                    <div className="coc-date">Queued: {new Date(thumbnailOutputRecord.queuedAt).toLocaleString()}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
+        </FeaturePage>
+      </div>
+    );
+  }
+
   if (page === 'library') {
     const tool = navTools.find(t => t.key === 'library')!;
     const libraryFilterTabs: { id: LibraryFilter; label: string; icon: React.ElementType; jobType: string }[] = [
@@ -3656,7 +4068,14 @@ function App() {
                   >
                     <div className="video-card-main-content">
                       <div className="video-card-preview-container">
-                        {(v.outputUrl && v.outputUrl.endsWith('.mp4')) ? (
+                        {v.thumbnailUrl ? (
+                          <img 
+                            src={v.thumbnailUrl} 
+                            alt={v.originalName} 
+                            className="video-card-thumbnail animate-fade-in" 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (v.outputUrl && v.outputUrl.endsWith('.mp4')) ? (
                           <video 
                             src={v.outputUrl} 
                             className="video-card-player" 
@@ -3692,6 +4111,26 @@ function App() {
                           </div>
                           <span>{formatRelativeTime(v.uploadedAt)}</span>
                         </div>
+
+                        {(v.status === 'processing' || v.status === 'queued') && (
+                          <div className="video-card-progress-bar-wrapper" style={{ width: '100%', marginTop: '6px', marginBottom: '8px' }}>
+                            <div className="progress-bar-outer" style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div 
+                                className="progress-bar-inner" 
+                                style={{ 
+                                  width: `${v.progress || 0}%`, 
+                                  height: '100%', 
+                                  background: 'var(--accent-color)', 
+                                  transition: 'width 0.4s ease' 
+                                }} 
+                              />
+                            </div>
+                            <div className="progress-bar-label" style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                              <span>{v.status === 'queued' ? 'Queued...' : 'Processing...'}</span>
+                              <span>{v.progress || 0}%</span>
+                            </div>
+                          </div>
+                        )}
 
                         {v.status === 'completed' && (
                           <div className="video-card-qualities-wrapper" onClick={(e) => e.stopPropagation()}>
@@ -4015,7 +4454,14 @@ function App() {
                           >
                             <div className="video-card-main-content">
                               <div className="video-card-preview-container">
-                                {(v.outputUrl || v.masterPlaylistUrl) ? (
+                                {v.thumbnailUrl ? (
+                                  <img 
+                                    src={v.thumbnailUrl} 
+                                    alt={v.originalName} 
+                                    className="video-card-thumbnail animate-fade-in" 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                ) : (v.outputUrl || v.masterPlaylistUrl) ? (
                                   <video 
                                     src={v.outputUrl || v.masterPlaylistUrl} 
                                     className="video-card-player" 
@@ -4050,6 +4496,26 @@ function App() {
                                   </div>
                                   <span>{formatRelativeTime(v.uploadedAt)}</span>
                                 </div>
+
+                                {(v.status === 'processing' || v.status === 'queued') && (
+                                  <div className="video-card-progress-bar-wrapper" style={{ width: '100%', marginTop: '6px', marginBottom: '8px' }}>
+                                    <div className="progress-bar-outer" style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                                      <div 
+                                        className="progress-bar-inner" 
+                                        style={{ 
+                                          width: `${v.progress || 0}%`, 
+                                          height: '100%', 
+                                          background: 'var(--accent-color)', 
+                                          transition: 'width 0.4s ease' 
+                                        }} 
+                                      />
+                                    </div>
+                                    <div className="progress-bar-label" style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                                      <span>{v.status === 'queued' ? 'Queued...' : 'Processing...'}</span>
+                                      <span>{v.progress || 0}%</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
 

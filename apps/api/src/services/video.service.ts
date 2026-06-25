@@ -85,7 +85,7 @@ export async function getVideoById(videoId: string): Promise<VideoDocument | nul
   return VideoModel.findById(videoId);
 }
 
-export async function listRecentVideos(limit = 12): Promise<VideoDocument[]> {
+export async function listRecentVideos(limit = 100): Promise<VideoDocument[]> {
   return VideoModel.find()
     .sort({ updatedAt: -1, uploadedAt: -1 })
     .limit(limit)
@@ -115,6 +115,8 @@ export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
     status: doc.status,
     masterPlaylistUrl: getPlayableMasterPlaylistUrl(doc),
     outputUrl: doc.outputUrl,
+    thumbnailUrl: doc.thumbnailUrl,
+    progress: doc.progress,
     jobType: doc.jobType,
     uploadedAt: doc.uploadedAt,
     updatedAt: doc.updatedAt,

@@ -4,7 +4,8 @@ export type JobType =
   | 'convert'
   | 'extract-audio'
   | 'trim'
-  | 'download-url';
+  | 'download-url'
+  | 'thumbnail';
 
 export enum VideoStatus {
   PENDING = 'pending',
@@ -23,6 +24,8 @@ export interface VideoMetaData{
     status : VideoStatus ;
     masterPlaylistUrl?: string;   
     outputUrl?: string;
+    thumbnailUrl?: string;
+    progress?: number;
     jobType?: string;
     uploadedAt: Date;
     updatedAt: Date; 

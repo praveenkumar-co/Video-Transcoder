@@ -3,6 +3,7 @@ import { env } from '../env';
 import { updateVideoStatus } from '../services/video.service';
 import { VideoStatus } from '../types/index';
 import { videoQueue } from '../queues/video.queue';
+import { VideoModel } from '../models/video.model';
 
 async function getVideoIdForJob(jobId: string): Promise<string> {
   const job = await videoQueue.getJob(jobId);
@@ -24,6 +25,12 @@ export function startVideoWorker(): void {
   queueEvents.on('active', async ({ jobId }) => {
     console.info(`[BullMQ] Job ${jobId} is active (processing)`);
     await updateVideoStatus(await getVideoIdForJob(jobId), VideoStatus.PROCESSING);
+  });
+
+  queueEvents.on('progress', async ({ jobId, data }) => {
+    const videoId = await getVideoIdForJob(jobId);
+    console.info(`[BullMQ] Job ${jobId} (Video: ${videoId}) progress updated: ${data}%`);
+    await VideoModel.findByIdAndUpdate(videoId, { progress: Number(data), updatedAt: new Date() });
   });
 
   queueEvents.on('completed', async ({ jobId }) => {

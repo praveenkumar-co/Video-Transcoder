@@ -59,6 +59,13 @@ const VideoSchema = new Schema<VideoDocument>(
     outputUrl: {
       type: String,
     },
+    thumbnailUrl: {
+      type: String,
+    },
+    progress: {
+      type: Number,
+      default: 0,
+    },
     jobType: {
       type: String,
       index: true,
