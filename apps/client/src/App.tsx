@@ -2465,7 +2465,8 @@ function App() {
       ? allVideos.find(v => v.videoId === downloadOutputRecord.videoId)
       : null;
     const dlOutputUrl = dlLiveVideo?.masterPlaylistUrl || dlLiveVideo?.outputUrl || downloadOutputRecord?.outputUrl;
-    const dlOutputStatus = dlLiveVideo?.status ?? (downloadOutputRecord ? 'queued' : undefined);
+    const isVeryRecent = downloadOutputRecord && (Date.now() - new Date(downloadOutputRecord.queuedAt).getTime() < 15000); // 15 seconds
+    const dlOutputStatus = dlLiveVideo?.status ?? (isVeryRecent ? 'queued' : undefined);
 
     const isCompleted = dlOutputStatus === 'completed';
     const isProcessing = dlOutputStatus === 'processing' || dlOutputStatus === 'queued';
@@ -2562,7 +2563,7 @@ function App() {
             <div className="download-right-col">
               {/* Status Card */}
               <div className={`download-status-card ${isCompleted ? 'completed' : isProcessing ? 'processing' : isFailed ? 'failed' : 'idle'}`}>
-                <div className="status-header">
+                <div className="status-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                   {isCompleted ? (
                     <div className="status-indicator">
                       <span className="green-tick-circle">
@@ -2586,10 +2587,21 @@ function App() {
                       <span className="status-text">Run a job to unlock actions</span>
                     </div>
                   )}
+                  {hasJob && (
+                    <button
+                      className="coc-clear-btn"
+                      onClick={() => {
+                        setDownloadOutputRecord(null);
+                        localStorage.removeItem('vf-download-output');
+                      }}
+                    >
+                      <X size={12} /> Clear
+                    </button>
+                  )}
                 </div>
-                {dlLiveVideo?.originalName && (
+                {(dlLiveVideo?.originalName || downloadOutputRecord?.originalName) && (
                   <div className="status-video-title">
-                    {dlLiveVideo.originalName}
+                    {dlLiveVideo?.originalName || downloadOutputRecord?.originalName}
                   </div>
                 )}
               </div>
