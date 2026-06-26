@@ -93,6 +93,11 @@ export async function listRecentVideos(limit = 100): Promise<VideoDocument[]> {
 }
 
 function getPlayableMasterPlaylistUrl(doc: VideoDocument): string | undefined {
+  const isHls = doc.jobType === 'transcode' || doc.jobType === 'download-url' || !!doc.masterPlaylistUrl;
+  if (!isHls) {
+    return undefined;
+  }
+
   if (doc.status !== VideoStatus.COMPLETED) {
     return doc.masterPlaylistUrl;
   }
@@ -118,6 +123,7 @@ export function toVideoMetadata(doc: VideoDocument): VideoMetaData {
     thumbnailUrl: doc.thumbnailUrl,
     progress: doc.progress,
     jobType: doc.jobType,
+    resolutions: doc.resolutions,
     uploadedAt: doc.uploadedAt,
     updatedAt: doc.updatedAt,
   };

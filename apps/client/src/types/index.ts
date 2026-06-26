@@ -30,6 +30,7 @@ export interface VideoMetaData {
   outputUrl?: string;
   thumbnailUrl?: string;
   progress?: number;
+  resolutions?: string[];
   uploadedAt: string;
   updatedAt: string;
 }

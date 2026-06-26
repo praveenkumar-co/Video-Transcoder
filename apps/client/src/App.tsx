@@ -67,6 +67,9 @@ import {
   ArrowDownToLine,
   Check,
   Lock,
+  HardDrive,
+  Cloud,
+  Box,
 } from 'lucide-react';
 import apiIconUrl from './icons/api.svg?url';
 import audioIconUrl from './icons/audio-svgrepo-com.svg?url';
@@ -1001,6 +1004,13 @@ const resourcesOptions = [
   { label: 'Developer Changelog', caption: 'Track recently compiled worker nodes', icon: Sparkles, url: 'https://changelog.videoforge.dev' }
 ];
 
+const CLOUD_PROVIDERS = [
+  { id: 'gdrive', label: 'Google Drive', subtitle: 'Google Workspace', color: '#4285F4', icon: HardDrive },
+  { id: 'dropbox', label: 'Dropbox', subtitle: 'Dropbox Cloud', color: '#0061FF', icon: FolderDown },
+  { id: 'onedrive', label: 'OneDrive', subtitle: 'Microsoft 365', color: '#0078D4', icon: Cloud },
+  { id: 'box', label: 'Box', subtitle: 'Box Personal/Enterprise', color: '#0061D5', icon: Box }
+];
+
 // ─── Main App ────────────────────────────────────────────────────────────────
 function App() {
   const [page, setPage] = useState<PageView>(() => {
@@ -1108,7 +1118,6 @@ function App() {
   const [compressUrlInput, setCompressUrlInput] = useState('');
   const [compressAiUpscale, setCompressAiUpscale] = useState(false);
   const [compressIsProcessing, setCompressIsProcessing] = useState(false);
-  const [showCloudModal, setShowCloudModal] = useState(false);
   const [showTcDownloadOptions, setShowTcDownloadOptions] = useState(false);
   const [showTcShareOptions, setShowTcShareOptions] = useState(false);
   const [showOpsShareOptions, setShowOpsShareOptions] = useState(false);
@@ -1772,9 +1781,20 @@ function App() {
     try {
       setCompressIsProcessing(true);
       showStatus('Fetching video from URL and queuing compression…', 'info');
-      // First download the URL video, then it lands in allVideos and we compress it
-      const dlResult = await triggerDownloadUrl(compressUrlInput.trim());
-      showStatus('Video fetched! Compression will start automatically once downloaded.', 'success');
+      const result = await triggerDownloadUrl(compressUrlInput.trim(), compressSize, 'compress');
+      showStatus('Video fetched and compression queued! Output will appear on the right when ready.', 'success');
+      
+      const record: CompressOutputRecord = {
+        videoId: result?.videoId ?? 'pending',
+        originalName: compressUrlInput.split('/').pop() || 'Compressed Video',
+        sizeBytes: 0,
+        outputUrl: result?.outputUrl,
+        targetSizeMB: compressSize,
+        upscale: false,
+        completedAt: new Date().toISOString(),
+      };
+      setCompressOutputRecord(record);
+      localStorage.setItem('vf-compress-output', JSON.stringify(record));
       setCompressUrlInput('');
       loadVideos();
     } catch (e: any) { showStatus(e.message || 'Failed', 'error'); }
@@ -2039,12 +2059,6 @@ function App() {
   if (page === 'compress') {
     const tool = navTools.find(t => t.key === 'compress')!;
 
-    const cloudProviders = [
-      { id: 'gdrive', label: 'Google Drive', subtitle: 'Google Workspace', color: '#4285F4', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4' },
-      { id: 'dropbox', label: 'Dropbox', subtitle: 'Dropbox Cloud', color: '#0061FF', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4' },
-      { id: 'onedrive', label: 'OneDrive', subtitle: 'Microsoft 365', color: '#0078D4', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' },
-      { id: 'box', label: 'Box', subtitle: 'Box Personal/Enterprise', color: '#0061D5', sampleUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4' },
-    ];
 
     // Find the matching video in allVideos for updated outputUrl
     const liveOutputVideo = compressOutputRecord
@@ -2073,55 +2087,6 @@ function App() {
           showStatus={showStatus}
           fullWidth
         >
-          {/* Cloud Import Modal */}
-          {showCloudModal && (
-            <div className="cloud-modal-backdrop" onClick={() => setShowCloudModal(false)}>
-              <div className="cloud-modal-panel" onClick={e => e.stopPropagation()}>
-                <div className="cloud-modal-header">
-                  <h3>Import from Cloud Storage</h3>
-                  <button className="cloud-modal-close" onClick={() => setShowCloudModal(false)}><X size={16} /></button>
-                </div>
-                <p className="cloud-modal-desc">Select a cloud provider and authorize VideoForge to pull your video directly — no manual download needed.</p>
-                <div className="cloud-provider-grid">
-                  {cloudProviders.map(p => (
-                    <div
-                      key={p.id}
-                      className="cloud-provider-card-v2"
-                    >
-                      <div className="cloud-provider-header-v2">
-                        <div className="cloud-provider-info-v2">
-                          <span className="cloud-provider-label-v2">{p.label}</span>
-                          <span className="cloud-provider-subtitle-v2">{p.subtitle}</span>
-                        </div>
-                        <span className="cloud-provider-dot-v2" style={{ backgroundColor: p.color, color: p.color }} />
-                      </div>
-                      <div className="cloud-provider-status-v2">
-                        <span className="status-indicator-dot" />
-                        Ready to connect
-                      </div>
-                      <button
-                        className="cloud-provider-connect-btn"
-                        style={{ '--hover-bg': p.color } as React.CSSProperties}
-                        onClick={async () => {
-                          setShowCloudModal(false);
-                          setCompressSourceTab('upload');
-                          showStatus(`Connecting to ${p.label}... Select a file from your laptop.`, 'info');
-                          setTimeout(() => {
-                            document.getElementById('file-input')?.click();
-                          }, 150);
-                        }}
-                      >
-                        Connect & Import
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="cloud-modal-note">
-                  <ShieldCheck size={13} /> OAuth authorization is required. No passwords stored.
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Share & QR Code Modal */}
           {shareUrlForModal && (
@@ -2189,7 +2154,6 @@ function App() {
                       className={`compress-tab-btn ${compressSourceTab === tab.id ? 'active' : ''}`}
                       onClick={() => {
                         setCompressSourceTab(tab.id);
-                        if (tab.id === 'cloud') setShowCloudModal(true);
                       }}
                     >
                       <Icon size={14} />
@@ -2226,20 +2190,31 @@ function App() {
 
                 {compressSourceTab === 'cloud' && (
                   <div className="compress-cloud-tab">
-                    <div className="cloud-tab-illustration">
-                      <CloudUpload size={40} style={{ color: 'var(--accent-color)', opacity: 0.7 }} />
-                      <h4>Connect a Cloud Provider</h4>
-                      <p>Pull videos from Google Drive, Dropbox, OneDrive, or Box using secure OAuth.</p>
-                      <button className="btn-trigger" onClick={() => setShowCloudModal(true)}>
-                        <CloudUpload size={14} /> Choose Cloud Provider
-                      </button>
+                    <div className="cloud-providers-horizontal-row">
+                      {CLOUD_PROVIDERS.map(p => {
+                        const Icon = p.icon;
+                        return (
+                          <div
+                            key={p.id}
+                            className="cloud-provider-card-horizontal"
+                            style={{ '--provider-color': p.color } as React.CSSProperties}
+                            onClick={async () => {
+                              showStatus(`Connecting to ${p.label}... Select a file from your device.`, 'info');
+                              setCompressSourceTab('upload');
+                              setTimeout(() => {
+                                document.getElementById('file-input')?.click();
+                              }, 150);
+                            }}
+                          >
+                            <div className="cloud-provider-icon-wrapper">
+                              <Icon size={24} />
+                            </div>
+                            <span className="cloud-provider-name-horizontal">{p.label}</span>
+                            <span className="cloud-provider-sub-horizontal">{p.subtitle}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    {compressUrlInput && (
-                      <div className="cloud-url-preview">
-                        <Link size={12} /> Imported: <code>{compressUrlInput.slice(0, 60)}…</code>
-                        <button className="cloud-url-clear" onClick={() => setCompressUrlInput('')}><X size={11} /></button>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -2900,7 +2875,6 @@ function App() {
                       className={`compress-tab-btn ${transcodeSourceTab === tab.id ? 'active' : ''}`}
                       onClick={() => {
                         setTranscodeSourceTab(tab.id);
-                        if (tab.id === 'cloud') setShowCloudModal(true);
                       }}
                     >
                       <Icon size={14} />
@@ -2937,20 +2911,31 @@ function App() {
 
                 {transcodeSourceTab === 'cloud' && (
                   <div className="compress-cloud-tab">
-                    <div className="cloud-tab-illustration">
-                      <CloudUpload size={40} style={{ color: 'var(--accent-color)', opacity: 0.7 }} />
-                      <h4>Connect a Cloud Provider</h4>
-                      <p>Pull videos from Google Drive, Dropbox, OneDrive, or Box using secure OAuth.</p>
-                      <button className="btn-trigger" onClick={() => setShowCloudModal(true)}>
-                        <CloudUpload size={14} /> Choose Cloud Provider
-                      </button>
+                    <div className="cloud-providers-horizontal-row">
+                      {CLOUD_PROVIDERS.map(p => {
+                        const Icon = p.icon;
+                        return (
+                          <div
+                            key={p.id}
+                            className="cloud-provider-card-horizontal"
+                            style={{ '--provider-color': p.color } as React.CSSProperties}
+                            onClick={async () => {
+                              showStatus(`Connecting to ${p.label}... Select a file from your device.`, 'info');
+                              setTranscodeSourceTab('upload');
+                              setTimeout(() => {
+                                document.getElementById('file-input')?.click();
+                              }, 150);
+                            }}
+                          >
+                            <div className="cloud-provider-icon-wrapper">
+                              <Icon size={24} />
+                            </div>
+                            <span className="cloud-provider-name-horizontal">{p.label}</span>
+                            <span className="cloud-provider-sub-horizontal">{p.subtitle}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    {transcodeUrlInput && (
-                      <div className="cloud-url-preview">
-                        <Link size={12} /> Imported: <code>{transcodeUrlInput.slice(0, 60)}…</code>
-                        <button className="cloud-url-clear" onClick={() => setTranscodeUrlInput('')}><X size={11} /></button>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -3134,13 +3119,42 @@ function App() {
                         <div className="share-dropdown-header">
                           Select Download Resolution
                         </div>
-                        {([
-                          { key: 'auto', label: 'Adaptive (Auto)' },
-                          { key: '1080p', label: '1080p Full HD' },
-                          { key: '720p', label: '720p HD' },
-                          { key: '480p', label: '480p SD' },
-                          { key: '360p', label: '360p SD' }
-                        ]).map(res => (
+                        {(() => {
+                          const resolutionsFromDB = liveV?.resolutions;
+                          if (resolutionsFromDB && resolutionsFromDB.length > 0) {
+                            const list: Array<{ key: string; label: string }> = [];
+                            if (resolutionsFromDB.length > 1) {
+                              list.push({ key: 'auto', label: 'Adaptive (Auto)' });
+                            }
+                            const order = ['1080p', '720p', '480p', '360p'];
+                            for (const r of order) {
+                              if (resolutionsFromDB.includes(r)) {
+                                list.push({
+                                  key: r,
+                                  label: r === '1080p' ? '1080p Full HD' : r === '720p' ? '720p HD' : r === '480p' ? '480p SD' : '360p SD'
+                                });
+                              }
+                            }
+                            return list;
+                          }
+
+                          const requestedRes = transcodeOutputRecord?.extra?.resolution;
+                          if (requestedRes && requestedRes !== 'Auto') {
+                            const resStr = String(requestedRes);
+                            return [{
+                              key: resStr,
+                              label: resStr === '1080p' ? '1080p Full HD' : resStr === '720p' ? '720p HD' : resStr === '480p' ? '480p SD' : '360p SD'
+                            }];
+                          }
+
+                          return [
+                            { key: 'auto', label: 'Adaptive (Auto)' },
+                            { key: '1080p', label: '1080p Full HD' },
+                            { key: '720p', label: '720p HD' },
+                            { key: '480p', label: '480p SD' },
+                            { key: '360p', label: '360p SD' }
+                          ];
+                        })().map(res => (
                           <button
                             key={res.key}
                             className="share-option"
@@ -3838,7 +3852,6 @@ function App() {
                         className={`compress-tab-btn ${thumbnailSourceTab === tab.id ? 'active' : ''}`}
                         onClick={() => {
                           setThumbnailSourceTab(tab.id);
-                          if (tab.id === 'cloud') setShowCloudModal(true);
                         }}
                       >
                         <Icon size={14} />
@@ -3874,13 +3887,30 @@ function App() {
 
                   {thumbnailSourceTab === 'cloud' && (
                     <div className="compress-cloud-tab">
-                      <div className="cloud-tab-illustration">
-                        <CloudUpload size={40} style={{ color: 'var(--accent-color)', opacity: 0.7 }} />
-                        <h4>Connect a Cloud Provider</h4>
-                        <p>Import videos from Google Drive, Dropbox, or OneDrive using secure OAuth.</p>
-                        <button className="btn-trigger" onClick={() => setShowCloudModal(true)}>
-                          <CloudUpload size={14} /> Choose Cloud Provider
-                        </button>
+                      <div className="cloud-providers-horizontal-row">
+                        {CLOUD_PROVIDERS.map(p => {
+                          const Icon = p.icon;
+                          return (
+                            <div
+                              key={p.id}
+                              className="cloud-provider-card-horizontal"
+                              style={{ '--provider-color': p.color } as React.CSSProperties}
+                              onClick={async () => {
+                                showStatus(`Connecting to ${p.label}... Select a file from your device.`, 'info');
+                                setThumbnailSourceTab('upload');
+                                setTimeout(() => {
+                                  document.getElementById('file-input')?.click();
+                                }, 150);
+                              }}
+                            >
+                              <div className="cloud-provider-icon-wrapper">
+                                <Icon size={24} />
+                              </div>
+                              <span className="cloud-provider-name-horizontal">{p.label}</span>
+                              <span className="cloud-provider-sub-horizontal">{p.subtitle}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -4275,18 +4305,25 @@ function App() {
                             <div className="video-card-qualities">
                               {v.masterPlaylistUrl ? (
                                 // HLS Resolutions
-                                (['1080p', '720p', '480p', '360p'] as const).map((res) => (
-                                  <button
-                                    key={res}
-                                    className="card-quality-btn"
-                                    onClick={() => {
-                                      setActivePlayUrl(v.masterPlaylistUrl!);
-                                      setActivePlayResolution(res);
-                                    }}
-                                  >
-                                    {res}
-                                  </button>
-                                ))
+                                (() => {
+                                  const dbResolutions = v.resolutions;
+                                  const list = ['1080p', '720p', '480p', '360p'] as const;
+                                  const filtered = dbResolutions && dbResolutions.length > 0
+                                    ? list.filter(res => dbResolutions.includes(res))
+                                    : list;
+                                  return filtered.map((res) => (
+                                    <button
+                                      key={res}
+                                      className="card-quality-btn"
+                                      onClick={() => {
+                                        setActivePlayUrl(v.masterPlaylistUrl!);
+                                        setActivePlayResolution(res);
+                                      }}
+                                    >
+                                      {res}
+                                    </button>
+                                  ));
+                                })()
                               ) : (
                                 // MP4 Output
                                 <button

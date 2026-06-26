@@ -7624,3 +7624,112 @@ a {
   color: var(--text-muted);
   max-width: 240px;
 }
+
+/* Horizontal Cloud Providers Row & Cards */
+.cloud-providers-horizontal-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .cloud-providers-horizontal-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .cloud-providers-horizontal-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cloud-provider-card-horizontal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1.5px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="midnight"] .cloud-provider-card-horizontal {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.6) 100%);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.cloud-provider-card-horizontal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--provider-color, #94a3b8);
+  opacity: 0.8;
+  transition: height 0.2s;
+}
+
+.cloud-provider-card-horizontal:hover {
+  transform: translateY(-3px);
+  border-color: var(--provider-color);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="midnight"] .cloud-provider-card-horizontal:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.cloud-provider-icon-wrapper {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--provider-color);
+  transition: all 0.25s ease-in-out;
+}
+
+[data-theme="midnight"] .cloud-provider-icon-wrapper {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cloud-provider-card-horizontal:hover .cloud-provider-icon-wrapper {
+  background: var(--provider-color);
+  color: #ffffff;
+  transform: scale(1.1);
+}
+
+.cloud-provider-name-horizontal {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+[data-theme="midnight"] .cloud-provider-name-horizontal {
+  color: #f8fafc;
+}
+
+.cloud-provider-sub-horizontal {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+[data-theme="midnight"] .cloud-provider-sub-horizontal {
+  color: #94a3b8;
+}

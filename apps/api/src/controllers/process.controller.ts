@@ -139,7 +139,7 @@ export const trimVideo = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const downloadFromUrl = asyncHandler(async (req: Request, res: Response) => {
-  const { sourceUrl } = req.body;
+  const { sourceUrl, targetSizeMB, targetJobType } = req.body;
   if (!sourceUrl) throw new ApiError(400, 'sourceUrl is required');
 
   try { new URL(sourceUrl); } catch {
@@ -155,7 +155,7 @@ export const downloadFromUrl = asyncHandler(async (req: Request, res: Response) 
     originalName: new URL(sourceUrl).pathname.split('/').pop() || sourceUrl,
     mimeType: 'video/unknown',
     sizeBytes: 0,
-    jobType: 'download',
+    jobType: targetJobType || 'download',
   });
 
   await enqueueProcessJob('download-url', {
@@ -164,10 +164,12 @@ export const downloadFromUrl = asyncHandler(async (req: Request, res: Response) 
     bucket: '',
     jobType: 'download-url',
     sourceUrl,
+    targetSizeMB: targetSizeMB ? Number(targetSizeMB) : undefined,
+    targetJobType: targetJobType || undefined,
   });
 
   return res.status(202).json(
-    new ApiResponse(202, { videoId, jobType: 'download-url', sourceUrl }, 'Download job queued')
+    new ApiResponse(202, { videoId, jobType: 'download-url', sourceUrl, targetJobType, targetSizeMB }, 'Download job queued')
   );
 });
 

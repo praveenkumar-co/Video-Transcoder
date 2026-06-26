@@ -56,6 +56,9 @@ const VideoSchema = new Schema<VideoDocument>(
     masterPlaylistUrl: {
       type: String,   
     },
+    resolutions: {
+      type: [String],
+    },
     outputUrl: {
       type: String,
     },

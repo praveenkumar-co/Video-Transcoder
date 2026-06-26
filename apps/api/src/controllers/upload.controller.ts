@@ -75,7 +75,7 @@ export const getVideoDownloadUrl = asyncHandler(
       throw new ApiError(404, 'Video not found');
     }
 
-    const isHls = video.jobType === 'transcode' || !!video.masterPlaylistUrl;
+    const isHls = (video.jobType === 'transcode' || video.jobType === 'download-url') && !!video.masterPlaylistUrl;
     const candidates: Array<{ bucket: string; key: string }> = [];
 
     // ── 1. HLS: try per-resolution MP4 (modern workers write video.mp4) ──────

@@ -27,6 +27,7 @@ export interface VideoMetaData{
     thumbnailUrl?: string;
     progress?: number;
     jobType?: string;
+    resolutions?: string[];
     uploadedAt: Date;
     updatedAt: Date; 
 }

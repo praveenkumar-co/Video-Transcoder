@@ -135,11 +135,15 @@ export async function triggerTrim(videoId: string, startTime: number, endTime: n
   return body.data;
 }
 
-export async function triggerDownloadUrl(sourceUrl: string): Promise<any> {
+export async function triggerDownloadUrl(
+  sourceUrl: string,
+  targetSizeMB?: number,
+  targetJobType?: string
+): Promise<any> {
   const res = await fetch(`${API_BASE}/api/process/download-url`, {
     method: 'POST',
     headers: getAuthHeaders('application/json'),
-    body: JSON.stringify({ sourceUrl }),
+    body: JSON.stringify({ sourceUrl, targetSizeMB, targetJobType }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error ?? body.message ?? `HTTP ${res.status}`);
