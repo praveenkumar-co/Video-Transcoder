@@ -1123,11 +1123,14 @@ function App() {
 
   const hasStartedCompression = !!compressOutputRecord || compressIsProcessing;
 
+  // Auto-set compression slider max & default value based on selected video
   useEffect(() => {
-    if (hasStartedCompression && compressSize < 25) {
-      setCompressSize(25);
+    if (page === 'compress' && selectedVideo) {
+      const originalSizeMB = selectedVideo.sizeBytes / (1024 * 1024);
+      // Default target size to 50% of the original size, at least 1MB
+      setCompressSize(Math.max(1, Math.round(originalSizeMB * 0.5)));
     }
-  }, [hasStartedCompression, compressSize]);
+  }, [selectedVideo, page]);
 
   // ─── Per-page output records (persist across reloads) ─────────────────────
   const [transcodeOutputRecord, setTranscodeOutputRecord] = useState<ServiceOutputRecord | null>(() => {
@@ -1737,12 +1740,8 @@ function App() {
   const handleCompress = async (videoId: string) => {
     if (selectedVideo) {
       const sizeInMB = selectedVideo.sizeBytes / (1024 * 1024);
-      if (selectedVideo.sizeBytes < 30 * 1024 * 1024) {
-        showStatus('This video is too small to be compressed (less than 30 MB). Please try another larger video!', 'error');
-        return;
-      }
-      if (sizeInMB <= compressSize) {
-        showStatus(`This video (${sizeInMB.toFixed(1)} MB) is already smaller than or equal to the target size (${compressSize} MB). Please select a smaller target size or another video!`, 'error');
+      if (compressSize > Math.ceil(sizeInMB)) {
+        showStatus(`Target size (${compressSize} MB) cannot exceed original size (${sizeInMB.toFixed(1)} MB).`, 'error');
         return;
       }
     }
@@ -2289,61 +2288,154 @@ function App() {
                 )}
               </div>
 
-              {/* Common Settings */}
-              <div className="compress-settings-section">
-                <div className="compress-setting-row">
-                  <label className="input-group" style={{ marginBottom: 0 }}>
-                    <span>Target Output Size</span>
-                    <div className="size-slider-row">
-                      <input
-                        type="range"
-                        min={hasStartedCompression ? 25 : 5}
-                        max="500"
-                        value={compressSize}
-                        onChange={e => setCompressSize(Math.max(hasStartedCompression ? 25 : 5, +e.target.value))}
-                        className="orange-slider-input"
-                      />
-                      <strong className="orange-stat">{compressSize} MB</strong>
-                    </div>
-                  </label>
-                </div>
+              {/* Premium Compression Dashboard */}
+              {(() => {
+                const originalSizeMB = selectedVideo ? selectedVideo.sizeBytes / (1024 * 1024) : 0;
+                const originalSizeFormatted = selectedVideo ? formatBytes(selectedVideo.sizeBytes) : '0 MB';
+                const targetSizeFormatted = `${compressSize} MB`;
+                
+                // Estimated reduction percentage
+                const reductionPercent = originalSizeMB > 0 
+                  ? Math.max(0, Math.min(99, Math.round((1 - (compressSize / originalSizeMB)) * 100))) 
+                  : 0;
 
-                {/* AI Enhancement Toggle */}
-                <div className="ai-upscale-toggle-row">
-                  <div className="ai-toggle-info">
-                    <div className="ai-toggle-title">
-                      <Sparkles size={15} style={{ color: '#a855f7' }} />
-                      <strong>AI 4K Upscaling</strong>
-                      <span className="premium-tag">PRO</span>
+                // Quality estimation
+                const qualityRatio = originalSizeMB > 0 ? (compressSize / originalSizeMB) : 0.5;
+                let qualityRating = 'Good';
+                let qualityStars = '★★★☆☆';
+                let qualityColor = '#f59e0b'; // Amber
+                if (qualityRatio >= 0.8) {
+                  qualityRating = 'Excellent';
+                  qualityStars = '★★★★★';
+                  qualityColor = '#10b981'; // Green
+                } else if (qualityRatio >= 0.6) {
+                  qualityRating = 'High';
+                  qualityStars = '★★★★☆';
+                  qualityColor = '#3b82f6'; // Blue
+                } else if (qualityRatio >= 0.4) {
+                  qualityRating = 'Good';
+                  qualityStars = '★★★☆☆';
+                  qualityColor = '#f59e0b'; // Amber
+                } else {
+                  qualityRating = 'Low';
+                  qualityStars = '★★☆☆☆';
+                  qualityColor = '#ef4444'; // Red
+                }
+
+                // Estimated processing time
+                const estTimeSec = originalSizeMB > 0 
+                  ? Math.max(3, Math.round(originalSizeMB * 0.15 + 3)) 
+                  : 0;
+                const estTimeFormatted = estTimeSec < 60 ? `~${estTimeSec}s` : `~${Math.round(estTimeSec / 60)}m`;
+
+                return (
+                  <div className="compression-dashboard-card">
+                    <div className="compression-dashboard-title">
+                      <Sparkles size={16} style={{ color: 'var(--accent-color)' }} />
+                      <span>Compression Configuration</span>
                     </div>
-                    <p className="ai-toggle-desc">Increase resolution (e.g. 1080p → 4K) while compressing. Perfect for restoring older footage.</p>
+                    
+                    {selectedVideo ? (
+                      <>
+                        <div className="compression-slider-container">
+                          <div className="compression-slider-header">
+                            <span className="slider-label">Target Output File Size</span>
+                            <span className="slider-value-bubble">{compressSize} MB</span>
+                          </div>
+                          
+                          <input
+                            type="range"
+                            min="1"
+                            max={Math.ceil(originalSizeMB)}
+                            value={compressSize}
+                            onChange={e => setCompressSize(Math.max(1, Math.min(Math.ceil(originalSizeMB), +e.target.value)))}
+                            className="premium-slider-input"
+                          />
+                          
+                          <div className="compression-slider-legend">
+                            <span>1 MB (Min)</span>
+                            <span>{Math.ceil(originalSizeMB)} MB (Original Max)</span>
+                          </div>
+                        </div>
+
+                        {/* Metric Cards Grid */}
+                        <div className="compression-metric-grid">
+                          <div className="compression-metric-card">
+                            <span className="cmc-label">Original Size</span>
+                            <strong className="cmc-value">{originalSizeFormatted}</strong>
+                          </div>
+
+                          <div className="compression-metric-card">
+                            <span className="cmc-label">Target Size</span>
+                            <strong className="cmc-value color-accent">{targetSizeFormatted}</strong>
+                          </div>
+
+                          <div className="compression-metric-card">
+                            <span className="cmc-label">Est. Reduction</span>
+                            <strong className="cmc-value color-success">-{reductionPercent}%</strong>
+                          </div>
+
+                          <div className="compression-metric-card">
+                            <span className="cmc-label">Output Quality</span>
+                            <strong className="cmc-value" style={{ color: qualityColor, fontSize: '0.85rem' }}>
+                              <span style={{ fontSize: '0.75rem', display: 'block', letterSpacing: '1px', marginBottom: '2px' }}>{qualityStars}</span>
+                              {qualityRating}
+                            </strong>
+                          </div>
+
+                          <div className="compression-metric-card">
+                            <span className="cmc-label">Est. Process Time</span>
+                            <strong className="cmc-value">{estTimeFormatted}</strong>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="compression-dashboard-placeholder">
+                        <FileVideo size={36} style={{ opacity: 0.4, marginBottom: '8px', color: 'var(--accent-color)' }} />
+                        <h4>Select a Video</h4>
+                        <p>Select a video from your library to configure target size and view live estimates.</p>
+                      </div>
+                    )}
+                    
+                    {/* AI Enhancement Toggle */}
+                    <div className="ai-upscale-toggle-row" style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                      <div className="ai-toggle-info">
+                        <div className="ai-toggle-title">
+                          <Sparkles size={15} style={{ color: '#a855f7' }} />
+                          <strong>AI 4K Upscaling</strong>
+                          <span className="premium-tag">PRO</span>
+                        </div>
+                        <p className="ai-toggle-desc">Increase resolution (e.g. 1080p → 4K) while compressing. Perfect for restoring older footage.</p>
+                      </div>
+                      <label className="toggle-switch">
+                        <input type="checkbox" checked={compressAiUpscale} onChange={e => setCompressAiUpscale(e.target.checked)} />
+                        <span className="toggle-slider" />
+                      </label>
+                    </div>
+
+                    <button
+                      className="btn-trigger salmon-color-btn compress-action-btn"
+                      style={{ width: '100%', justifyContent: 'center', marginTop: '20px', padding: '12px' }}
+                      disabled={
+                        compressIsProcessing ||
+                        (compressSourceTab !== 'url' && !selectedVideo) ||
+                        (compressSourceTab === 'url' && !compressUrlInput.trim())
+                      }
+                      onClick={() => {
+                        if (compressSourceTab === 'url') {
+                          handleCompressFromUrl();
+                        } else if (selectedVideo) {
+                          handleCompress(selectedVideo.videoId);
+                        }
+                      }}
+                    >
+                      {compressIsProcessing
+                        ? <><RefreshCw size={16} className="pulse-anim" /> Processing…</>
+                        : <><Gauge size={16} /> Start Compression</>}
+                    </button>
                   </div>
-                  <label className="toggle-switch">
-                    <input type="checkbox" checked={compressAiUpscale} onChange={e => setCompressAiUpscale(e.target.checked)} />
-                    <span className="toggle-slider" />
-                  </label>
-                </div>
-
-                <button
-                  className="btn-trigger salmon-color-btn compress-action-btn"
-                  disabled={
-                    compressIsProcessing ||
-                    (compressSourceTab !== 'url' && !selectedVideo) ||
-                    (compressSourceTab === 'url' && !compressUrlInput.trim())
-                  }
-                  onClick={() => {
-                    if (compressSourceTab === 'url') {
-                      handleCompressFromUrl();
-                    } else if (selectedVideo) {
-                      handleCompress(selectedVideo.videoId);
-                    }
-                  }}
-                >
-                  {compressIsProcessing
-                    ? <><RefreshCw size={16} className="pulse-anim" /> Processing…</>
-                    : <><Gauge size={16} /> Start Compression</>}
-                </button>
-              </div>
+                );
+              })()}
 
               {statusMessage && <div className={`page-toast ${statusMessage.type}`}><Sparkles size={14} />{statusMessage.text}</div>}
             </div>
