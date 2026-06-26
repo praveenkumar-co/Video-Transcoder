@@ -1003,7 +1003,40 @@ const resourcesOptions = [
 
 // ─── Main App ────────────────────────────────────────────────────────────────
 function App() {
-  const [page, setPage] = useState<PageView>('home');
+  const [page, setPage] = useState<PageView>(() => {
+    try {
+      const saved = localStorage.getItem('vf-current-page');
+      const validPages: PageView[] = [
+        'home', 'trial', 'compress', 'download', 'transcode', 
+        'ops', 'clipexport', 'thumbnail', 'library', 'settings', 
+        'pricing', 'profile', 'contact', 'feedback'
+      ];
+      return saved && validPages.includes(saved as PageView) ? (saved as PageView) : 'home';
+    } catch {
+      return 'home';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('vf-current-page', page);
+    } catch (e) {
+      console.error('Failed to save page state:', e);
+    }
+  }, [page]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.dropdown-wrapper')) {
+        setIsToolsDropdownOpen(false);
+        setIsResourcesDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+
   const [isLeftDrawerOpen, setIsLeftDrawerOpen] = useState(false);
   const [isToolsDropdownOpen, setIsToolsDropdownOpen] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
