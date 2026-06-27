@@ -998,10 +998,7 @@ const toolsMegaOptions = [
 ];
 
 const resourcesOptions = [
-  { label: 'API Documentation', caption: 'Integrate VideoForge in your scripts', icon: Globe2, url: 'https://github.com/praveenkumar-co/Video-Transcoder' },
-  { label: 'FFmpeg Encoding Guide', caption: 'Best practices for web rendering', icon: SlidersHorizontal, url: 'https://ffmpeg.org/documentation.html' },
-  { label: 'System Status', caption: 'Check processing cluster loads', icon: ShieldCheck, url: 'https://status.videoforge.dev' },
-  { label: 'Developer Changelog', caption: 'Track recently compiled worker nodes', icon: Sparkles, url: 'https://changelog.videoforge.dev' }
+  { label: 'FFmpeg Encoding Guide', caption: 'Best practices for web rendering', icon: SlidersHorizontal, url: 'https://ffmpeg.org/documentation.html' }
 ];
 
 const CLOUD_PROVIDERS = [
