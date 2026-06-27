@@ -7733,3 +7733,61 @@ a {
 [data-theme="midnight"] .cloud-provider-sub-horizontal {
   color: #94a3b8;
 }
+
+/* Dynamic Trim Inputs Layout */
+.trim-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.trim-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trim-group-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-color);
+  opacity: 0.8;
+}
+
+.trim-hms-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.trim-hms-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.trim-hms-field input {
+  text-align: center;
+  font-weight: 600;
+  padding: 8px;
+}
+
+.trim-hms-field span {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 700;
+  text-align: center;
+  margin-top: 1px;
+}
+
+.trim-hms-separator {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-muted);
+  align-self: center;
+  padding-bottom: 16px;
+  opacity: 0.6;
+}

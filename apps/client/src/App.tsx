@@ -1105,6 +1105,56 @@ function App() {
   const [audioFormat, setAudioFormat] = useState<'mp3' | 'wav' | 'aac'>('mp3');
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(30);
+  const [selectedVideoDuration, setSelectedVideoDuration] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!selectedVideo) {
+      setSelectedVideoDuration(null);
+      return;
+    }
+    let active = true;
+    const fetchDuration = async () => {
+      try {
+        let url = selectedVideo.outputUrl || selectedVideo.masterPlaylistUrl;
+        if (!url) {
+          url = await getVideoDownloadUrlAPI(selectedVideo.videoId);
+        }
+        if (url && active) {
+          const tempVideo = document.createElement('video');
+          tempVideo.preload = 'metadata';
+          tempVideo.src = url;
+          tempVideo.onloadedmetadata = () => {
+            if (active) {
+              setSelectedVideoDuration(tempVideo.duration);
+            }
+          };
+          tempVideo.onerror = () => {
+            if (active) {
+              setSelectedVideoDuration(null);
+            }
+          };
+        }
+      } catch (err) {
+        if (active) {
+          setSelectedVideoDuration(null);
+        }
+      }
+    };
+    fetchDuration();
+    return () => {
+      active = false;
+    };
+  }, [selectedVideo]);
+
+  useEffect(() => {
+    if (selectedVideoDuration) {
+      setTrimEnd(Math.round(selectedVideoDuration));
+      setTrimStart(0);
+    } else {
+      setTrimStart(0);
+      setTrimEnd(30);
+    }
+  }, [selectedVideoDuration]);
   const [thumbnailOffset, setThumbnailOffset] = useState(2);
   const [thumbnailIsProcessing, setThumbnailIsProcessing] = useState(false);
   const [thumbnailSourceTab, setThumbnailSourceTab] = useState<'upload' | 'cloud' | 'url' | 'library'>('upload');
@@ -3252,6 +3302,28 @@ function App() {
 
   if (page === 'ops') {
     const tool = navTools.find(t => t.key === 'ops')!;
+
+    const getHms = (secondsVal: number) => {
+      const h = Math.floor(secondsVal / 3600);
+      const m = Math.floor((secondsVal % 3600) / 60);
+      const s = Math.floor(secondsVal % 60);
+      return { h, m, s };
+    };
+
+    const startHms = getHms(trimStart);
+    const endHms = getHms(trimEnd);
+
+    const handleStartChange = (unit: 'h' | 'm' | 's', val: number) => {
+      const next = { ...startHms, [unit]: val };
+      const totalSecs = next.h * 3600 + next.m * 60 + next.s;
+      setTrimStart(totalSecs);
+    };
+
+    const handleEndChange = (unit: 'h' | 'm' | 's', val: number) => {
+      const next = { ...endHms, [unit]: val };
+      const totalSecs = next.h * 3600 + next.m * 60 + next.s;
+      setTrimEnd(totalSecs);
+    };
     const latest = [convertOutputRecord, audioOutputRecord, trimOutputRecord]
       .filter(Boolean)
       .sort((a, b) => new Date(b!.queuedAt).getTime() - new Date(a!.queuedAt).getTime())[0];
@@ -3347,9 +3419,110 @@ function App() {
                   </div>
                   <div className="op-sub-panel">
                     <h4>Trim Clip</h4>
-                    <div className="trim-inputs">
-                      <label><span>Start (s)</span><input type="number" className="text-input sm" min="0" value={trimStart} onChange={e => setTrimStart(+e.target.value)} /></label>
-                      <label><span>End (s)</span><input type="number" className="text-input sm" min="1" value={trimEnd} onChange={e => setTrimEnd(+e.target.value)} /></label>
+                    <div className="trim-section">
+                      {/* Start Time Section */}
+                      <div className="trim-group">
+                        <span className="trim-group-label">Start Time</span>
+                        <div className="trim-hms-row">
+                          {(!selectedVideoDuration || selectedVideoDuration >= 3600) && (
+                            <>
+                              <div className="trim-hms-field">
+                                <input
+                                  type="number"
+                                  className="text-input sm"
+                                  min="0"
+                                  placeholder="00"
+                                  value={startHms.h}
+                                  onChange={e => handleStartChange('h', Math.max(0, +e.target.value))}
+                                />
+                                <span>hr</span>
+                              </div>
+                              <span className="trim-hms-separator">:</span>
+                            </>
+                          )}
+                          {(!selectedVideoDuration || selectedVideoDuration >= 60) && (
+                            <>
+                              <div className="trim-hms-field">
+                                <input
+                                  type="number"
+                                  className="text-input sm"
+                                  min="0"
+                                  max="59"
+                                  placeholder="00"
+                                  value={startHms.m}
+                                  onChange={e => handleStartChange('m', Math.max(0, Math.min(59, +e.target.value)))}
+                                />
+                                <span>min</span>
+                              </div>
+                              <span className="trim-hms-separator">:</span>
+                            </>
+                          )}
+                          <div className="trim-hms-field">
+                            <input
+                              type="number"
+                              className="text-input sm"
+                              min="0"
+                              max={(!selectedVideoDuration || selectedVideoDuration >= 60) ? 59 : undefined}
+                              placeholder="00"
+                              value={startHms.s}
+                              onChange={e => handleStartChange('s', Math.max(0, (!selectedVideoDuration || selectedVideoDuration >= 60) ? Math.min(59, +e.target.value) : +e.target.value))}
+                            />
+                            <span>sec</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* End Time Section */}
+                      <div className="trim-group">
+                        <span className="trim-group-label">End Time</span>
+                        <div className="trim-hms-row">
+                          {(!selectedVideoDuration || selectedVideoDuration >= 3600) && (
+                            <>
+                              <div className="trim-hms-field">
+                                <input
+                                  type="number"
+                                  className="text-input sm"
+                                  min="0"
+                                  placeholder="00"
+                                  value={endHms.h}
+                                  onChange={e => handleEndChange('h', Math.max(0, +e.target.value))}
+                                />
+                                <span>hr</span>
+                              </div>
+                              <span className="trim-hms-separator">:</span>
+                            </>
+                          )}
+                          {(!selectedVideoDuration || selectedVideoDuration >= 60) && (
+                            <>
+                              <div className="trim-hms-field">
+                                <input
+                                  type="number"
+                                  className="text-input sm"
+                                  min="0"
+                                  max="59"
+                                  placeholder="00"
+                                  value={endHms.m}
+                                  onChange={e => handleEndChange('m', Math.max(0, Math.min(59, +e.target.value)))}
+                                />
+                                <span>min</span>
+                              </div>
+                              <span className="trim-hms-separator">:</span>
+                            </>
+                          )}
+                          <div className="trim-hms-field">
+                            <input
+                              type="number"
+                              className="text-input sm"
+                              min="0"
+                              max={(!selectedVideoDuration || selectedVideoDuration >= 60) ? 59 : undefined}
+                              placeholder="00"
+                              value={endHms.s}
+                              onChange={e => handleEndChange('s', Math.max(0, (!selectedVideoDuration || selectedVideoDuration >= 60) ? Math.min(59, +e.target.value) : +e.target.value))}
+                            />
+                            <span>sec</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <button className="btn-op full" disabled={!selectedVideo} onClick={() => selectedVideo && handleTrim(selectedVideo.videoId)}><Scissors size={14} /> Export Clip</button>
                   </div>
@@ -3786,6 +3959,21 @@ function App() {
 
   if (page === 'thumbnail') {
     const tool = navTools.find(t => t.key === 'thumbnail')!;
+
+    const getHms = (secondsVal: number) => {
+      const h = Math.floor(secondsVal / 3600);
+      const m = Math.floor((secondsVal % 3600) / 60);
+      const s = Math.floor(secondsVal % 60);
+      return { h, m, s };
+    };
+
+    const offsetHms = getHms(thumbnailOffset);
+
+    const handleOffsetChange = (unit: 'h' | 'm' | 's', val: number) => {
+      const next = { ...offsetHms, [unit]: val };
+      const totalSecs = next.h * 3600 + next.m * 60 + next.s;
+      setThumbnailOffset(totalSecs);
+    };
     const liveV = thumbnailOutputRecord ? allVideos.find(v => v.videoId === thumbnailOutputRecord.videoId) : null;
     const thumbnailUrl = liveV?.outputUrl || liveV?.thumbnailUrl || thumbnailOutputRecord?.outputUrl;
     const thumbnailStatus = liveV?.status ?? (thumbnailOutputRecord ? 'queued' : undefined);
@@ -3971,17 +4159,57 @@ function App() {
                       
                       <div className="op-sub-panel" style={{ marginTop: '20px' }}>
                         <h4>Extraction Offset</h4>
-                        <div className="trim-inputs" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <label>
-                            <span>Capture Timestamp (seconds)</span>
-                            <input 
-                              type="number" 
-                              className="text-input sm" 
-                              min="0" 
-                              value={thumbnailOffset} 
-                              onChange={e => setThumbnailOffset(Math.max(0, +e.target.value))} 
-                            />
-                          </label>
+                        <div className="trim-section">
+                          <div className="trim-group">
+                            <span className="trim-group-label">Capture Timestamp</span>
+                            <div className="trim-hms-row">
+                              {(!selectedVideoDuration || selectedVideoDuration >= 3600) && (
+                                <>
+                                  <div className="trim-hms-field">
+                                    <input
+                                      type="number"
+                                      className="text-input sm"
+                                      min="0"
+                                      placeholder="00"
+                                      value={offsetHms.h}
+                                      onChange={e => handleOffsetChange('h', Math.max(0, +e.target.value))}
+                                    />
+                                    <span>hr</span>
+                                  </div>
+                                  <span className="trim-hms-separator">:</span>
+                                </>
+                              )}
+                              {(!selectedVideoDuration || selectedVideoDuration >= 60) && (
+                                <>
+                                  <div className="trim-hms-field">
+                                    <input
+                                      type="number"
+                                      className="text-input sm"
+                                      min="0"
+                                      max="59"
+                                      placeholder="00"
+                                      value={offsetHms.m}
+                                      onChange={e => handleOffsetChange('m', Math.max(0, Math.min(59, +e.target.value)))}
+                                    />
+                                    <span>min</span>
+                                  </div>
+                                  <span className="trim-hms-separator">:</span>
+                                </>
+                              )}
+                              <div className="trim-hms-field">
+                                <input
+                                  type="number"
+                                  className="text-input sm"
+                                  min="0"
+                                  max={(!selectedVideoDuration || selectedVideoDuration >= 60) ? 59 : undefined}
+                                  placeholder="00"
+                                  value={offsetHms.s}
+                                  onChange={e => handleOffsetChange('s', Math.max(0, (!selectedVideoDuration || selectedVideoDuration >= 60) ? Math.min(59, +e.target.value) : +e.target.value))}
+                                />
+                                <span>sec</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                         <button 
                           className="btn-trigger" 
