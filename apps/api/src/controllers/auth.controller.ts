@@ -50,8 +50,8 @@ async function verifyGoogleToken(idToken: string) {
 export const signup = asyncHandler(async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
-  if (!name || !email || !password) {
-    throw new ApiError(400, 'Name, email, and password are required');
+  if (!name || !email) {
+    throw new ApiError(400, 'Name and email are required');
   }
 
   const existing = await UserModel.findOne({ email });
